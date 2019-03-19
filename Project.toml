@@ -4,7 +4,7 @@ authors = ["Abel Soares Siqueira <abel.s.siqueira@gmail.com>", "Dominique Orban 
 version = "0.1.0"
 
 [deps]
-HSL = "ee98c95a-e179-5be9-9426-02167ee0676a"
+HSL = "34c5aeac-e683-54a6-a0e9-6e0fdc586c50"
 Krylov = "ba0b0d4f-ebba-5204-a429-3ac8c609bfb7"
 LDLFactorizations = "40e66cde-538c-5869-a4ad-c39174c6795b"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"

@@ -2,12 +2,18 @@ using HSL, LDLFactorizations
 
 abstract type LinearSolverStruct end
 
-mutable struct MA57Struct <: LinearSolverStruct
-  factor :: Ma57
-end
+if @isdefined libhsl_ma57
+  mutable struct MA57Struct <: LinearSolverStruct
+    factor :: Ma57
+  end
 
-function MA57Struct(N, rows, cols, vals)
-  MA57Struct(ma57_coord(N, rows, cols, vals))
+  function MA57Struct(N, rows, cols, vals)
+    MA57Struct(ma57_coord(N, rows, cols, vals))
+  end
+else
+  function MA57Struct(N, rows, cols, vals)
+    error("MA57 not installed. See HSL.jl")
+  end
 end
 
 mutable struct LDLFactStruct <: LinearSolverStruct

@@ -1,5 +1,5 @@
 # stdlib
-using Test
+using Logging, Test
 
 # JSO packages
 using NLPModels
@@ -24,7 +24,9 @@ function cannoles_tests()
                         [(x -> F_under(x,n), i * ones(n), i * ones(n)) for i = 1:5]
                        ]
       nls = ADNLSModel(F, x0, length(F(x0)))
-      stats = cannoles(nls)
+      stats = with_logger(NullLogger()) do
+        cannoles(nls, linsolve=:ldlfactorizations)
+      end
       @test isapprox(stats.solution, xf, atol = 1e-4)
     end
   end
@@ -40,7 +42,9 @@ function cannoles_tests()
                           ]
       m = length(c(x0))
       nls = ADNLSModel(F, x0, length(F(x0)), c=c, lcon=zeros(m), ucon=zeros(m))
-      stats = cannoles(nls)
+      stats = with_logger(NullLogger()) do
+        cannoles(nls, linsolve=:ldlfactorizations)
+      end
       @test isapprox(stats.solution, xf, atol = 1e-4)
     end
   end
@@ -48,7 +52,9 @@ function cannoles_tests()
   @testset "Multiprecision" begin
     nls = ADNLSModel(F_Rosen, [-1.2; 1.0], 2, c=c_linear, lcon=[0.0], ucon=[0.0])
     for T in (Float16, Float32, Float64, BigFloat)
-      stats = cannoles(nls, x=T[-1.2; 1.0], linsolve=:ldlfactorizations)
+      stats = with_logger(NullLogger()) do
+        cannoles(nls, x=T[-1.2; 1.0], linsolve=:ldlfactorizations)
+      end
       @test isapprox(stats.solution, [0.6188; 0.3812], atol=max(1e-4,eps(T)^T(0.25)))
     end
   end
