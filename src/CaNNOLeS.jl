@@ -7,6 +7,16 @@ using LinearAlgebra, Logging, SparseArrays
 # JSO packages
 using HSL, Krylov, LDLFactorizations, LinearOperators, NLPModels, SolverTools
 
+function __init__()
+  global available_linsolvers = [:ldlfactorizations]
+  if @isdefined libhsl_ma57
+    push!(available_linsolvers, :ma57)
+  end
+  if @isdefined libhsl_ma97
+    push!(available_linsolvers, :ma97)
+  end
+end
+
 export cannoles
 
 include("solver_types.jl")
@@ -46,7 +56,10 @@ function cannoles(nls :: AbstractNLSModel;
   end
   merit in [:auglag] || error("Wrong merit function $merit")
   T = eltype(x)
-  linsolve in [:ma57, #=:ma97,=# :ldlfactorizations] || error("Wrong linsolve value $linsolve")
+  if !(linsolve in available_linsolvers)
+    @warn("linsolve $linsolve not available. Using :ldlfactorizations instead")
+    linsolve = :ldlfactorizations
+  end
   if has_bounds(nls) || inequality_constrained(nls)
     error("Problem has inequalities, can't solve it")
   end
@@ -74,7 +87,7 @@ function cannoles(nls :: AbstractNLSModel;
 
   # Allocation and structure of Newton system matrix
   # G = [Hx + ρI; Jx -I; Jcx 0 -δI]
-  nnzhF, nnzhc, nnzjF, nnzjc = nls.nls_meta.nnzh, nls.meta.nnzh, nls.nls_meta.nnzj, nls.meta.nnzj
+  nnzhF, nnzhc, nnzjF, nnzjc = nls.nls_meta.nnzh, ncon > 0 ? nls.meta.nnzh : 0, nls.nls_meta.nnzj, nls.meta.nnzj
   nnzNS = nnzhF + nnzhc + nnzjF + nnzjc + nvar + nequ + ncon
   # Hx
   hsr_rows, hsr_cols = hess_structure_residual(nls)
@@ -461,9 +474,10 @@ function newton_system(x, r, λ, Fx, rhs, LDLT, ρold, params, method, linsolve)
       return success
     elseif linsolve == :ldlfactorizations
       try
-        M = ldl(Matrix(Symmetric(sparse(LDLT.rows, LDLT.cols, LDLT.vals), :L)))
-        λp = filter(x->x ≥ 0, M.D)
-        λm = filter(x->x ≤ 0, M.D)
+        N = nvar + nequ + ncon
+        A = sparse(LDLT.rows, LDLT.cols, LDLT.vals, N, N)
+        A = Matrix(Symmetric(A, :L))
+        M = ldl(A)
         pos_eig = count(M.D .> params[:eig_tol])
         zer_eig = count(abs.(M.D) .≤ params[:eig_tol])
         success = pos_eig == nvar && zer_eig == 0

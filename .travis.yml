@@ -23,6 +23,3 @@ branches:
   only:
     - master
     - /^v\d+\.\d+(\.\d+)?(-\S*)?$/ # tags
-
-before_install:
-  - julia -e 'using Pkg; pkg"add https://github.com/JuliaSmoothOptimizers/HSL.jl#ma57"'
