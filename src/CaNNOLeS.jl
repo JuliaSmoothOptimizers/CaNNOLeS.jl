@@ -9,6 +9,8 @@ using HSL, Krylov, LDLFactorizations, LinearOperators, NLPModels, SolverTools
 
 export cannoles
 
+include("solver_types.jl")
+
 """
     cannoles(nls)
 
@@ -72,8 +74,53 @@ function cannoles(nls :: AbstractNLSModel;
   params[:ρmin] = ρmin
   params[:γA] = ϵM^T(1/4)
 
+  # Allocation and structure of Newton system matrix
+  # G = [Hx + ρI; Jx -I; Jcx 0 -δI]
+  nnzhF, nnzhc, nnzjF, nnzjc = nls.nls_meta.nnzh, nls.meta.nnzh, nls.nls_meta.nnzj, nls.meta.nnzj
+  nnzNS = nnzhF + nnzhc + nnzjF + nnzjc + nvar + nequ + ncon
+  # Hx
+  hsr_rows, hsr_cols = hess_structure_residual(nls)
+  Ti = eltype(hsr_rows)
+  rows = zeros(Ti, nnzNS)
+  cols = zeros(Ti, nnzNS)
+  vals = zeros(T, nnzNS)
+  sI = 1:nnzhF
+  rows[sI] .= hsr_rows
+  cols[sI] .= hsr_cols
+  if ncon > 0
+    sI = nnzhF .+ (1:nnzhc)
+    rows[sI], cols[sI] = hess_structure(nls)
+  end
+  # Jx
+  sI = nnzhF + nnzhc .+ (1:nnzjF)
+  Jx_rows, Jx_cols = jac_structure_residual(nls)
+  rows[sI] .= Jx_rows .+ nvar
+  cols[sI] .= Jx_cols
+  Jx_vals = zeros(T, nls.nls_meta.nnzj)
+  Jt_vals = similar(Jx_vals)
+  # Jcx
+  local Jcx_rows, Jcx_cols, Jcx_vals, Jct_vals
+  if ncon > 0
+    sI = nnzhF + nnzhc + nnzjF .+ (1:nnzjc)
+    Jcx_rows, Jcx_cols = jac_structure(nls)
+    rows[sI] .= Jcx_rows .+ (nvar + nequ)
+    cols[sI] .= Jcx_cols
+    Jcx_vals = zeros(T, nls.meta.nnzj)
+    Jct_vals = similar(Jcx_vals)
+  end
+  # -I
+  sI = nnzhF + nnzhc + nnzjF + nnzjc .+ (1:nequ)
+  rows[sI], cols[sI], vals[sI] = nvar+1:nvar+nequ, nvar+1:nvar+nequ, -ones(nequ)
+  # -δI
+  if ncon > 0
+    sI = nnzhF + nnzhc + nnzjF + nnzjc + nequ .+ (1:ncon)
+    rows[sI], cols[sI] = nvar+nequ+1:nvar+nequ+ncon, nvar+nequ+1:nvar+nequ+ncon
+  end
+  # ρI
+  sI = nnzhF + nnzhc + nnzjF + nnzjc + nequ + ncon .+ (1:nvar)
+  rows[sI], cols[sI] = 1:nvar, 1:nvar
+
   F!(x, Fx) = residual!(nls, x, Fx)
-  J(x) = jac_residual(nls, x)
   crhs = T.(nls.meta.lcon)
   c!(x, cx) = if ncon == 0 crhs; else
       begin
@@ -81,7 +128,6 @@ function cannoles(nls :: AbstractNLSModel;
         cx .-= crhs
       end
     end
-  Jc(x) = ncon > 0 ? jac(nls, x) : zeros(T, 0, nvar)
 
   ϕ(x, λ, Fx, cx, η) = begin
     dot(Fx, Fx) / 2 - dot(λ, cx) + η * dot(cx, cx) / 2
@@ -92,11 +138,16 @@ function cannoles(nls :: AbstractNLSModel;
     error("Initial point gives Inf or Nan")
   end
   fx = dot(Fx, Fx) / 2
-  Jx = J(x)
+
+  jac_coord_residual!(nls, x, Jx_rows, Jx_cols, Jx_vals)
+  Jx = sparse(Jx_rows, Jx_cols, Jx_vals, nequ, nvar)
 
   cx = zeros(T, ncon)
   c!(x, cx)
-  Jcx = Jc(x)
+  if ncon > 0
+    jac_coord!(nls, x, Jcx_rows, Jcx_cols, Jcx_vals)
+  end
+  Jcx = ncon > 0 ? sparse(Jcx_rows, Jcx_cols, Jcx_vals, ncon, nvar) : spzeros(ncon, nvar)
 
   # TODO: Decide how to start r
   #r = ones(T, nequ)
@@ -124,6 +175,18 @@ function cannoles(nls :: AbstractNLSModel;
 
   normdualhat   = normdual   = norm(dual, Inf)
   normprimalhat = normprimal = norm(primal, Inf)
+
+  LDLT = if linsolve == :ma57
+    LDLT = MA57Struct(nvar + nequ + ncon, rows, cols, vals)
+    vals = LDLT.factor.vals
+    LDLT
+  elseif linsolve == :ldlfactorizations
+    LDLT = LDLFactStruct(rows, cols, vals)
+    vals = LDLT.vals
+    LDLT
+  else
+    error("Can't handle $linsolve")
+  end
 
   smax = T(100.0)
   ϵf = ϵtol / 2# + rtol * fx
@@ -194,7 +257,6 @@ function cannoles(nls :: AbstractNLSModel;
     inner_iter = 0
     combined_optimality_hat = T(Inf)
     first_iteration = true
-    local Hx
     while first_iteration ||
           !(combined_optimality_hat <= T(0.99) * combined_optimality + ϵk || tired)
       first_iteration = false
@@ -202,22 +264,46 @@ function cannoles(nls :: AbstractNLSModel;
       ### System solution
       if inner_iter != 1 || always_accept_extrapolation # If = 1, then extrapolation step failed, and x is not updated
         if method == :Newton
-          Hx = hess_residual(nls, x, r)
+          sI = 1:nnzhF
+          @views hess_coord_residual!(nls, x, r, rows[sI], cols[sI], vals[sI])
+          sI = nnzhF + nnzhc .+ (1:nnzjF)
+          vals[sI] .= Jx_vals
           if ncon > 0
-            Hx -= hess(nls, x, obj_weight=zero(T), y=λ)
+            sI = nnzhF .+ (1:nnzhc)
+            @views hess_coord!(nls, x, obj_weight=zero(T), y=-λ, rows[sI], cols[sI], vals[sI])
+            sI = nnzhF + nnzhc + nnzjF .+ (1:nnzjc)
+            vals[sI] .= Jcx_vals
+            sI = nnzhF + nnzhc + nnzjF + nnzjc + nequ .+ (1:ncon)
+            vals[sI] = -δ * ones(ncon)
           end
+          sI = nnzhF + nnzhc + nnzjF + nnzjc + nequ + ncon .+ (1:nvar)
+          vals[sI] .= zero(T)
+          #=
         elseif method == :LM
           #Hx = spzeros(nvar, nvar)
           Λ = [norm(Jx[:,j])^2 for j = 1:nvar] * max(1e-10, min(1e8, damp))
           #Λ = ones(nvar) * max(1e-10, min(1e8, damp))
           Hx = spdiagm(0 => Λ)
+          =#
         else
           error("No method $method")
         end
 
+        #=
+        println("rows = $rows")
+        println("cols = $cols")
+        println("vals = $vals")
+        @info("", x, sparse(rows, cols, vals))
+
+        Ex = sparse(rows, cols, vals) - [hess_residual(nls, x, r) - hess(nls, x, obj_weight=0.0, y=λ) spzeros(nvar, nequ + ncon);
+                                         [Jx; Jcx] spdiagm(0 => [-ones(nequ); -δ * ones(ncon)])]
+
+        @info("", Ex)
+        =#
+
         # on first time, μnew = μ⁺
         rhs .= [dual; primal]
-        d, ρ, ρold, δ, nfacti = newton_system(x, r, λ, Fx, rhs, Jx, Jcx, Hx, ρold, δ, params, method, linsolve)
+        d, ρ, ρold, nfacti = newton_system(x, r, λ, Fx, rhs, LDLT, ρold, params, method, linsolve)
         nfact += nfacti
         nlinsolve += 1
 
@@ -242,7 +328,7 @@ function cannoles(nls :: AbstractNLSModel;
       ### End of System solution
 
       α = zero(T) # For the log
-      if inner_iter == 0
+      if inner_iter == 0 
         ϵk = max(min(1e3 * δ, 99 * ϵk / 100), 9 * ϵk / 10)
         xt .= x + dx
         rt .= r + dr
@@ -255,12 +341,10 @@ function cannoles(nls :: AbstractNLSModel;
         F!(xt, Ft)
         c!(xt, ct)
       else
-        curv = dot(dx, Hx * dx) + ρ * dot(dx, dx) + norm(Jx * dx)^2
-
         η, α, ϕx, Dϕ, nbki = line_search(x, r, λ, dx, dr, dλ,
                                         Fx, cx, Jx, Jcx, ϕ, xt, rt, λt,
                                         Ft, ct, F!, c!, ρ, δ, η,
-                                        false, curv, merit, params)
+                                        false, merit, params)
 
         nbk += nbki
 
@@ -278,8 +362,12 @@ function cannoles(nls :: AbstractNLSModel;
         end
       end
 
-      Jt = J(xt)
-      Jct = Jc(xt)
+      jac_coord_residual!(nls, xt, Jx_rows, Jx_cols, Jt_vals)
+      Jt = sparse(Jx_rows, Jx_cols, Jt_vals, nequ, nvar)
+      if ncon > 0
+        jac_coord!(nls, xt, Jcx_rows, Jcx_cols, Jct_vals)
+      end
+      Jct = ncon > 0 ? sparse(Jcx_rows, Jcx_cols, Jct_vals, ncon, nvar) : spzeros(ncon, nvar)
 
       dual   .= Jt' * rt - Jct' * λt
       primal .= [Ft - rt; ct]
@@ -297,8 +385,12 @@ function cannoles(nls :: AbstractNLSModel;
         Fx .= Ft
         fx = dot(Fx, Fx) / 2
         cx .= ct
-        Jx = Jt
-        Jcx = Jct
+        Jx .= Jt
+        Jx_vals .= Jt_vals
+        if ncon > 0
+          Jcx .= Jct
+          Jcx_vals .= Jct_vals
+        end
       end
 
       if combined_optimality_hat <= T(0.99) * combined_optimality + ϵk
@@ -381,18 +473,17 @@ function cannoles(nls :: AbstractNLSModel;
 
   #TODO: Fix infeasibility measure
   return GenericExecutionStats(status, nls, solution=x, objective=dot(Fx, Fx) / 2,
-                               dual_feas=normdual, elapsed_time=elapsed_time,
+                               dual_feas=normdual, elapsed_time=elapsed_time, primal_feas=norm(primal[nequ+1:end]),
                                solver_specific=Dict(:nbk => nbk,
                                                     :nfact => nfact,
                                                     :nlinsolve => nlinsolve,
-                                                    :primal => norm(cx),
                                                     :multipliers => λ,
                                                     :internal_msg => internal_msg,
                                                    )
                               )
 end
 
-function newton_system(x, r, λ, Fx, rhs, Jx, Jcx, Hx, ρold, δ, params, method, linsolve)
+function newton_system(x, r, λ, Fx, rhs, LDLT, ρold, params, method, linsolve)
   nvar = length(x)
   nequ = length(r)
   ncon = length(λ)
@@ -402,19 +493,28 @@ function newton_system(x, r, λ, Fx, rhs, Jx, Jcx, Hx, ρold, δ, params, method
 
   #ρ = method == :LM ? max(100 * params[:ρmin], min(norm(Fx), norm(Fx)^2) ) : zero(eltype(x))
   ρ = zero(eltype(x))
-  Bw = [Jx; Jcx]
-  D = [ones(T, nequ);
-       δ * ones(T, ncon)]
-  # Only half the matrix is used
-  B = [Hx  spzeros(T, nvar, nequ + ncon); # Bw';
-       Bw  spdiagm(0 => -D)]
 
-  function try_to_factorize(B)
+  function try_to_factorize(LDLT)
     if linsolve == :ma57
-      LDLT = Ma57(B)
-      ma57_factorize(LDLT)
-      success = LDLT.info.info[1] == 0 && LDLT.info.num_negative_eigs == nequ + ncon
-      return LDLT, success
+      ma57_factorize(LDLT.factor)
+      success = LDLT.factor.info.info[1] == 0 && LDLT.factor.info.num_negative_eigs == nequ + ncon
+      return success
+    elseif linsolve == :ldlfactorizations
+      try
+        M = ldl(Matrix(Symmetric(sparse(LDLT.rows, LDLT.cols, LDLT.vals), :L)))
+        λp = filter(x->x ≥ 0, M.D)
+        λm = filter(x->x ≤ 0, M.D)
+        pos_eig = count(M.D .> params[:eig_tol])
+        zer_eig = count(abs.(M.D) .≤ params[:eig_tol])
+        success = pos_eig == nvar && zer_eig == 0
+        LDLT.factor = M
+        return success
+      catch
+        return false
+      end
+    else
+      error("Can't handle $linsolve")
+      #=
     elseif linsolve == :ma97
       LDLT = Ma97(B)
       ma97_factorize!(LDLT, matrix_type=:real_indef)
@@ -422,7 +522,7 @@ function newton_system(x, r, λ, Fx, rhs, Jx, Jcx, Hx, ρold, δ, params, method
       return LDLT, success
     elseif linsolve == :ldlfactorizations
       try
-        LDLT = ldl(Matrix(Symmetric(B, :L)))
+        LDLT = ldl(Matrix(Symmetric(sparse(rows, cols, vals), :L)))
         λp = filter(x->x ≥ 0, LDLT.D)
         λm = filter(x->x ≤ 0, LDLT.D)
         pos_eig = count(LDLT.D .> params[:eig_tol])
@@ -432,27 +532,31 @@ function newton_system(x, r, λ, Fx, rhs, Jx, Jcx, Hx, ρold, δ, params, method
       catch
         return nothing, false
       end
+      =#
     end
   end
 
-  LDLT, success = try_to_factorize(B)
+  success = try_to_factorize(LDLT)
   nfact += 1
+
+  vals = if linsolve == :ma57
+    LDLT.factor.vals
+  elseif linsolve == :ldlfactorizations
+    LDLT.vals
+  end
+  sI = length(vals)-nvar+1:length(vals)
 
   if !success
     ρ = ρold == 0 ? params[:ρ0] : max(params[:ρmin], params[:κdec] * ρold)
-    D = [ones(T, nequ);
-         δ * ones(T, ncon)]
-    B = [Hx + ρ * I    spzeros(T, nvar, nequ + ncon); # Bw';
-         Bw  spdiagm(0 => -D)]
-    LDLT, success = try_to_factorize(B)
+    vals[sI] .= ρ
+    success = try_to_factorize(LDLT)
     nfact += 1
     ρiter = 0
     while !success && ρ <= params[:ρmax]
       ρ = ρold == 0 ? params[:κlargeinc] * ρ : params[:κinc] * ρ
       if ρ <= params[:ρmax]
-        B = [Hx + ρ * I    spzeros(T, nvar, nequ + ncon); # Bw';
-             Bw  spdiagm(0 => -D)]
-        LDLT, success = try_to_factorize(B)
+        vals[sI] .= ρ
+        success = try_to_factorize(LDLT)
         nfact += 1
       end
       ρiter += 1
@@ -462,12 +566,14 @@ function newton_system(x, r, λ, Fx, rhs, Jx, Jcx, Hx, ρold, δ, params, method
     end
   end
   d = if linsolve == :ma57
-    ma57_solve(LDLT, -rhs)
+    ma57_solve(LDLT.factor, -rhs)
+  elseif linsolve == :ldlfactorizations
+    @assert LDLT.factor != nothing
+    -(LDLT.factor \ rhs)
+    #=
   elseif linsolve == :ma97
     ma97_solve(LDLT, -rhs)
-  elseif linsolve == :ldlfactorizations
-    @assert LDLT != nothing
-    -(LDLT \ rhs)
+    =#
   end
 
   #=
@@ -493,16 +599,16 @@ function newton_system(x, r, λ, Fx, rhs, Jx, Jcx, Hx, ρold, δ, params, method
        )
        =#
 
-  return d, ρ, ρold, δ, nfact
+  return d, ρ, ρold, nfact
 end
 
 function line_search(x, r, λ, dx, dr, dλ, Fx,
                      cx, Jx, Jcx, ϕ, xt, rt, λt, Ft, ct, F!, c!, ρ,
-                     δ, η, trial_computed, curv, merit, params)
+                     δ, η, trial_computed, merit, params)
   T = eltype(x)
   # For comparison
-  Dϕ₁ = -curv
-  Dϕ₂ = -norm(cx + δ * dλ)^2
+  #Dϕ₁ = -curv
+  #Dϕ₂ = -norm(cx + δ * dλ)^2
   #Dϕ = -curv - norm(cx + δ * dλ)^2 / δ
   Dϕ = dot(Jx' * Fx, dx) - dot(dx, Jcx' * (λ - cx / δ))
 
