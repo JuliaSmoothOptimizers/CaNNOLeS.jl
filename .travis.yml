@@ -1,0 +1,28 @@
+language: julia
+
+os:
+  - linux
+  - osx
+
+julia:
+  - 1.0
+  - 1.1
+  - nightly
+
+matrix:
+  allow_failures:
+    - julia: nightly
+
+notifications:
+  email:
+    recipients: abel.s.siqueira@gmail.com
+    on_success: never
+    on_failure: change
+
+branches:
+  only:
+    - master
+    - /^v\d+\.\d+(\.\d+)?(-\S*)?$/ # tags
+
+before_install:
+  - julia -e 'using Pkg; pkg"add https://github.com/JuliaSmoothOptimizers/HSL.jl#ma57"'
