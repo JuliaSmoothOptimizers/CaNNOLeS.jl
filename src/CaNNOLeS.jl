@@ -2,7 +2,7 @@
 module CaNNOLeS
 
 # stdlib
-using LinearAlgebra, Logging, Printf, SparseArrays
+using LinearAlgebra, Logging, SparseArrays
 
 # JSO packages
 using HSL, Krylov, LDLFactorizations, LinearOperators, NLPModels, SolverTools
@@ -46,7 +46,7 @@ function cannoles(nls :: AbstractNLSModel;
   end
   merit in [:auglag] || error("Wrong merit function $merit")
   T = eltype(x)
-  linsolve in [:ma57, :ma97, :ldlfactorizations] || error("Wrong linsolve value $linsolve")
+  linsolve in [:ma57, #=:ma97,=# :ldlfactorizations] || error("Wrong linsolve value $linsolve")
   if has_bounds(nls) || inequality_constrained(nls)
     error("Problem has inequalities, can't solve it")
   end
@@ -55,7 +55,6 @@ function cannoles(nls :: AbstractNLSModel;
   nequ = nls_meta(nls).nequ
   ncon = nls.meta.ncon
 
-  # TODO: Cleanup
   # Parameters
   params = Dict{Symbol, T}()
   ρmin, ρ0, ρmax = √ϵM, ϵM^T(1/3), min(ϵM^T(-2.0), prevfloat(T(Inf)))
@@ -119,6 +118,7 @@ function cannoles(nls :: AbstractNLSModel;
   sI = nnzhF + nnzhc + nnzjF + nnzjc + nequ + ncon .+ (1:nvar)
   rows[sI], cols[sI] = 1:nvar, 1:nvar
 
+  # Shorter function definitions
   F!(x, Fx) = residual!(nls, x, Fx)
   crhs = T.(nls.meta.lcon)
   c!(x, cx) = if ncon == 0 crhs; else
@@ -132,6 +132,7 @@ function cannoles(nls :: AbstractNLSModel;
     dot(Fx, Fx) / 2 - dot(λ, cx) + η * dot(cx, cx) / 2
   end
 
+  # Initial values
   Fx = residual(nls, x)
   if any(isnan.(Fx)) || any(isinf.(Fx))
     error("Initial point gives Inf or Nan")
@@ -148,8 +149,6 @@ function cannoles(nls :: AbstractNLSModel;
   end
   Jcx = ncon > 0 ? sparse(Jcx_rows, Jcx_cols, Jcx_vals, ncon, nvar) : spzeros(ncon, nvar)
 
-  # TODO: Decide how to start r
-  #r = ones(T, nequ)
   r = copy(Fx)
   dx = zeros(T, nvar)
   dr = zeros(T, nequ)
@@ -188,7 +187,7 @@ function cannoles(nls :: AbstractNLSModel;
   end
 
   smax = T(100.0)
-  ϵf = ϵtol / 2# + rtol * fx
+  ϵf = ϵtol / 2 # fx = 0.5‖F(x)‖² ≤ ϵf
   ϵc = sqrt(ϵtol)
 
   # Small residual
@@ -218,9 +217,6 @@ function cannoles(nls :: AbstractNLSModel;
   λt = copy(λ)
   Ft = copy(Fx)
   ct = copy(cx)
-  oldx = copy(x)
-  oldr = copy(r)
-  oldλ = copy(λ)
 
   η = one(T)
   if ncon == 0
@@ -238,12 +234,6 @@ function cannoles(nls :: AbstractNLSModel;
   @info log_row(Any[0, sum_counters(nls), fx, 0.0, normdual, norm(primal[1:nequ]), norm(primal[nequ+1:end])])
 
   while !(solved || tired || broken)
-    oldx .= x
-    oldr .= r
-    oldλ .= λ
-    oldJx = Jx
-    oldJcx = Jcx
-
     # |G(w) - μe|
     combined_optimality = normdual + normprimal
     δ = max(δmin, min(δdec * δ, combined_optimality))
@@ -256,7 +246,7 @@ function cannoles(nls :: AbstractNLSModel;
     while first_iteration ||
           !(combined_optimality_hat <= T(0.99) * combined_optimality + ϵk || tired)
       first_iteration = false
-      # TODO: Review
+
       ### System solution
       if inner_iter != 1 || always_accept_extrapolation # If = 1, then extrapolation step failed, and x is not updated
         if method == :Newton
@@ -285,18 +275,6 @@ function cannoles(nls :: AbstractNLSModel;
           error("No method $method")
         end
 
-        #=
-        println("rows = $rows")
-        println("cols = $cols")
-        println("vals = $vals")
-        @info("", x, sparse(rows, cols, vals))
-
-        Ex = sparse(rows, cols, vals) - [hess_residual(nls, x, r) - hess(nls, x, obj_weight=0.0, y=λ) spzeros(nvar, nequ + ncon);
-                                         [Jx; Jcx] spdiagm(0 => [-ones(nequ); -δ * ones(ncon)])]
-
-        @info("", Ex)
-        =#
-
         # on first time, μnew = μ⁺
         rhs .= [dual; primal]
         d, ρ, ρold, nfacti = newton_system(x, r, λ, Fx, rhs, LDLT, ρold, params, method, linsolve)
@@ -324,11 +302,11 @@ function cannoles(nls :: AbstractNLSModel;
       ### End of System solution
 
       α = zero(T) # For the log
-      if inner_iter == 0 
+      if inner_iter == 0
         ϵk = max(min(1e3 * δ, 99 * ϵk / 100), 9 * ϵk / 10)
         xt .= x + dx
         rt .= r + dr
-        # TODO: Can I do this?
+
         Mdλ = T(1e4)
         if norm(dλ) > Mdλ
           dλ .= dλ * Mdλ / norm(dλ)
@@ -417,7 +395,6 @@ function cannoles(nls :: AbstractNLSModel;
     first_order = max(normdual / sd, normprimal) <= ϵtol
     small_residual = check_small_residual && fx ≤ ϵf && norm(cx) ≤ ϵc
     if small_residual && !first_order
-      # Ignoring bounds
       r .= Fx
       Jxtr = Jx' * r
       λ = T.(cgls(Jcx', Jxtr)[1]) # Armand 2012
@@ -456,7 +433,6 @@ function cannoles(nls :: AbstractNLSModel;
 
   elapsed_time = time() - start_time
 
-  #TODO: Fix infeasibility measure
   return GenericExecutionStats(status, nls, solution=x, objective=dot(Fx, Fx) / 2,
                                dual_feas=normdual, elapsed_time=elapsed_time, primal_feas=norm(primal[nequ+1:end]),
                                solver_specific=Dict(:nbk => nbk,
@@ -476,7 +452,6 @@ function newton_system(x, r, λ, Fx, rhs, LDLT, ρold, params, method, linsolve)
   T = eltype(x)
   nfact = 0
 
-  #ρ = method == :LM ? max(100 * params[:ρmin], min(norm(Fx), norm(Fx)^2) ) : zero(eltype(x))
   ρ = zero(eltype(x))
 
   function try_to_factorize(LDLT)
@@ -505,18 +480,6 @@ function newton_system(x, r, λ, Fx, rhs, LDLT, ρold, params, method, linsolve)
       ma97_factorize!(LDLT, matrix_type=:real_indef)
       success = LDLT.info.flag == 0 && LDLT.info.num_neg == nequ + ncon
       return LDLT, success
-    elseif linsolve == :ldlfactorizations
-      try
-        LDLT = ldl(Matrix(Symmetric(sparse(rows, cols, vals), :L)))
-        λp = filter(x->x ≥ 0, LDLT.D)
-        λm = filter(x->x ≤ 0, LDLT.D)
-        pos_eig = count(LDLT.D .> params[:eig_tol])
-        zer_eig = count(abs.(LDLT.D) .≤ params[:eig_tol])
-        success = pos_eig == nvar && zer_eig == 0
-        return LDLT, success
-      catch
-        return nothing, false
-      end
       =#
     end
   end
@@ -561,29 +524,6 @@ function newton_system(x, r, λ, Fx, rhs, LDLT, ρold, params, method, linsolve)
     =#
   end
 
-  #=
-  dx = d[1:nvar]
-  λv = []
-  if dot(dx, Hx * dx + ρ * dx) ≤ 0
-    λv = eigen(Matrix(Symmetric(B, :L))).values
-  end
-
-  @info("Newton",
-        nfact,
-        norm(Symmetric(B, :L) * d + rhs),
-        dot(dx, Hx * dx + ρ * dx) + norm(Jx * dx)^2,
-        ρ, δ,
-        (nvar, nequ, ncon),
-        count(λv .> 0),
-        count(λv .< 0),
-        LDLT.info.info[1],
-        LDLT.info.num_negative_eigs
-       )
-  @info("eigen",
-        eigen(Symmetric(Hx, :L) + Jx' * Jx).values[:]
-       )
-       =#
-
   return d, ρ, ρold, nfact
 end
 
@@ -591,10 +531,6 @@ function line_search(x, r, λ, dx, dr, dλ, Fx,
                      cx, Jx, Jcx, ϕ, xt, rt, λt, Ft, ct, F!, c!, ρ,
                      δ, η, trial_computed, merit, params)
   T = eltype(x)
-  # For comparison
-  #Dϕ₁ = -curv
-  #Dϕ₂ = -norm(cx + δ * dλ)^2
-  #Dϕ = -curv - norm(cx + δ * dλ)^2 / δ
   Dϕ = dot(Jx' * Fx, dx) - dot(dx, Jcx' * (λ - cx / δ))
 
   if length(λ) > 0
@@ -622,9 +558,6 @@ function line_search(x, r, λ, dx, dr, dλ, Fx,
     c!(xt, ct)
     ϕt = ϕ(xt, λ, Ft, ct, η)
     if α < eps(T)^2
-      println("ϕx = $ϕx")
-      println("ϕt = $ϕt")
-      println("Dϕ = $Dϕ")
       error("α too small")
     end
   end
