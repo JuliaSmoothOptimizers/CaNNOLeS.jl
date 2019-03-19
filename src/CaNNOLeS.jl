@@ -22,7 +22,6 @@ Input:
 - `nls :: AbstractNLSModel`: Nonlinear least-squares model created using `NLPModels`.
 """
 function cannoles(nls :: AbstractNLSModel;
-                  logger :: AbstractLogger = NullLogger(),
                   x :: AbstractVector = copy(nls.meta.x0),
                   λ :: AbstractVector = eltype(x)[],
                   method :: Symbol = :Newton,
@@ -233,13 +232,10 @@ function cannoles(nls :: AbstractNLSModel;
 
   ϵk = 1e3
 
-  with_logger(logger) do
-    @info @sprintf("I    %6s  %8s  %8s  %8s  %8s  %8s  %8s  %8s  %8s  %8s  %6s  %6s\n",
-                   "#F", "fx", "Δt", "‖∇L‖", "‖Fx - r‖", "‖c(x)‖", "α", "η", "ρ", "δ", "in_it", "nbk")
-    @info @sprintf("∘0   %6d  %8.2e  %8.2e  %8.2e  %8.2e  %8.2e  %8s  %8s  %8s  %8s  %6s  %6d\n",
-                   sum_counters(nls), fx, 0.0, normdual, norm(primal[1:nequ]),
-                   norm(primal[nequ+1:end]), "-", "-", "-", "-", "-", 0)
-  end
+  @info log_header([:I, :nF, :fx, :Δt, :dual, :Fxminusr, :primal, :α, :η, :ρ, :δ, :in_it, :nbk],
+                   [Int, Int, T, Float64, T, T, T, T, T, T, T, Int, Int],
+                   hdr_override=Dict(:nF=>"#F", :dual=>"‖∇L‖", :Fxminusr=>"‖Fx - r‖", :primal=>"‖c(x)‖"))
+  @info log_row(Any[0, sum_counters(nls), fx, 0.0, normdual, norm(primal[1:nequ]), norm(primal[nequ+1:end])])
 
   while !(solved || tired || broken)
     oldx .= x
@@ -409,14 +405,8 @@ function cannoles(nls :: AbstractNLSModel;
       tired = sum_counters(nls) > max_f || elapsed_time > max_time ||
               inner_iter > max_inner
 
-      with_logger(logger) do
-        c = inner_iter == 1 ? "┌" : "│"
-        #           #f   f(x)   Δt    ‖dual‖ ‖Fx-r‖ ‖c(x)‖ α      η      ρ      δ
-        @info @sprintf("%s%-3d %6d  %8.2e  %8.2e  %8.2e  %8.2e  %8.2e  %8.2e  %8.2e  %8.2e  %8.2e  %6d  %6d\n",
-                       c, iter, sum_counters(nls), fx, elapsed_time, normdualhat,
-                      norm(primal[1:nequ]), norm(primal[nequ+1:end]),
-                      α, η, ρ, δ, inner_iter, nbk)
-      end
+      @info log_row(Any[iter, sum_counters(nls), fx, elapsed_time, normdualhat, norm(primal[1:nequ]),
+                        norm(primal[nequ+1:end]), α, η, ρ, δ, inner_iter, nbk])
     end
 
     normdual   = normdualhat
@@ -442,13 +432,8 @@ function cannoles(nls :: AbstractNLSModel;
     tired = sum_counters(nls) > max_f || elapsed_time > max_time ||
             inner_iter > max_inner
 
-    with_logger(logger) do
-      #               #f   f(x)  Δt     ‖∇L‖ ‖Fx-r‖ ‖c(x)‖ α   η      ρ      δ  in_it
-      @info @sprintf("└%-3d %6d  %8.2e  %8.2e  %8.2e  %8.2e  %8.2e  %8s  %8.2e  %8.2e  %8.2e  %6d  %6d\n",
-              iter, sum_counters(nls), fx, elapsed_time, normdual,
-              norm(primal[1:nequ]), norm(primal[nequ+1:end]),
-              "-", η, ρ, δ, inner_iter, nbk)
-    end
+    @info log_row(Any[iter, sum_counters(nls), fx, elapsed_time, normdual, norm(primal[1:nequ]),
+                      norm(primal[nequ+1:end]), 0.0, η, ρ, δ, inner_iter, nbk])
     iter += 1
 
   end
