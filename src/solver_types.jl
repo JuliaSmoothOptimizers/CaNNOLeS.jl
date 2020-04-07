@@ -2,7 +2,7 @@ using HSL, LDLFactorizations
 
 abstract type LinearSolverStruct end
 
-if @isdefined libhsl_ma57
+if isdefined(HSL, :libhsl_ma57)
   mutable struct MA57Struct <: LinearSolverStruct
     factor :: Ma57
   end

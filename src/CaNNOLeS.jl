@@ -9,10 +9,10 @@ using HSL, Krylov, LDLFactorizations, LinearOperators, NLPModels, SolverTools
 
 function __init__()
   global available_linsolvers = [:ldlfactorizations]
-  if @isdefined libhsl_ma57
+  if isdefined(HSL, :libhsl_ma57)
     push!(available_linsolvers, :ma57)
   end
-  if @isdefined libhsl_ma97
+  if isdefined(HSL, :libhsl_ma97)
     push!(available_linsolvers, :ma97)
   end
 end
@@ -48,7 +48,7 @@ function cannoles(nls :: AbstractNLSModel;
   )
 
   start_time = time()
-  avail_mtds = [:Newton, :LM]
+  avail_mtds = [:Newton, :LM, :Newton_noFHess, :Newton_vanishing]
   if !(method in avail_mtds)
     s = "`method` must be one of these: "
     s *= join(["`$x`" for x in avail_mtds], ", ")
@@ -152,13 +152,13 @@ function cannoles(nls :: AbstractNLSModel;
   end
   fx = dot(Fx, Fx) / 2
 
-  jac_coord_residual!(nls, x, Jx_rows, Jx_cols, Jx_vals)
+  jac_coord_residual!(nls, x, Jx_vals)
   Jx = sparse(Jx_rows, Jx_cols, Jx_vals, nequ, nvar)
 
   cx = zeros(T, ncon)
   c!(x, cx)
   if ncon > 0
-    jac_coord!(nls, x, Jcx_rows, Jcx_cols, Jcx_vals)
+    jac_coord!(nls, x, Jcx_vals)
   end
   Jcx = ncon > 0 ? sparse(Jcx_rows, Jcx_cols, Jcx_vals, ncon, nvar) : spzeros(ncon, nvar)
 
@@ -262,14 +262,16 @@ function cannoles(nls :: AbstractNLSModel;
 
       ### System solution
       if inner_iter != 1 || always_accept_extrapolation # If = 1, then extrapolation step failed, and x is not updated
-        if method == :Newton
-          sI = 1:nnzhF
-          @views hess_coord_residual!(nls, x, r, rows[sI], cols[sI], vals[sI])
+        if method in [:Newton, :Newton_noFHess, :Newton_vanishing]
+          if method == :Newton || (method == :Newton_vanishing && dot(Fx, Fx) > 1e-8)
+            sI = 1:nnzhF
+            @views hess_coord_residual!(nls, x, r, vals[sI])
+          end
           sI = nnzhF + nnzhc .+ (1:nnzjF)
           vals[sI] .= Jx_vals
           if ncon > 0
             sI = nnzhF .+ (1:nnzhc)
-            @views hess_coord!(nls, x, obj_weight=zero(T), y=-λ, rows[sI], cols[sI], vals[sI])
+            @views hess_coord!(nls, x, -λ, vals[sI], obj_weight=zero(T))
             sI = nnzhF + nnzhc + nnzjF .+ (1:nnzjc)
             vals[sI] .= Jcx_vals
             sI = nnzhF + nnzhc + nnzjF + nnzjc + nequ .+ (1:ncon)
@@ -349,10 +351,10 @@ function cannoles(nls :: AbstractNLSModel;
         end
       end
 
-      jac_coord_residual!(nls, xt, Jx_rows, Jx_cols, Jt_vals)
+      jac_coord_residual!(nls, xt, Jt_vals)
       Jt = sparse(Jx_rows, Jx_cols, Jt_vals, nequ, nvar)
       if ncon > 0
-        jac_coord!(nls, xt, Jcx_rows, Jcx_cols, Jct_vals)
+        jac_coord!(nls, xt, Jct_vals)
       end
       Jct = ncon > 0 ? sparse(Jcx_rows, Jcx_cols, Jct_vals, ncon, nvar) : spzeros(ncon, nvar)
 
