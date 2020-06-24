@@ -11,28 +11,17 @@ It also uses [HSL.jl](https://github.com/JuliaSmoothOptimizers/HSL.jl)'s `MA57` 
 
 Cite as
 
-Orban, D., & Siqueira, A. S. (2019). A Regularization Method for Constrained
-Nonlinear Least Squares (Cahier du GERAD No. G-2019-17). Montréal, QC, Canada:
-GERAD. doi:[10.13140/RG.2.2.11974.52809](https://dx.doi.org/10.13140/RG.2.2.11974.52809)
+> Orban, D., & Siqueira, A. S. (2019).
+> A Regularization Method for Constrained Nonlinear Least Squares.
+> Computational Optimization and Applications 76, 961–989 (2020).
+> [10.1007/s10589-020-00201-2](https://doi.org/10.1007/s10589-020-00201-2)
 
-Bibtex:
-
-```
-@article{Orban2019Regularization,
-  doi = {10.13140/rg.2.2.11974.52809},
-  url = {http://rgdoi.net/10.13140/RG.2.2.11974.52809},
-  author = {Orban,  Dominique and Siqueira,  Abel Soares},
-  language = {en},
-  title = {A Regularization Method for Constrained Nonlinear Least Squares},
-  publisher = {Unpublished},
-  year = {2019}
-}
-```
+Check [CITATION.bib](CITATION.bib) for bibtex.
 
 ## Installation
 
-1. Follow [HSL.jl](https://github.com/JuliaSmoothOptimizers/HSL.jl)'s `MA57` installation.
-2. `pkg> add https://github.com/JuliaSmoothOptimizers/CaNNOLeS.jl`
+1. Follow [HSL.jl](https://github.com/JuliaSmoothOptimizers/HSL.jl)'s `MA57` installation if possible. Otherwise [LDLFactorizations.jl](https://github.com/JuliaSmoothOptimizers/LDLFactorizations.jl) will be used.
+2. `pkg> add CaNNOLeS`
 
 ## Example
 
