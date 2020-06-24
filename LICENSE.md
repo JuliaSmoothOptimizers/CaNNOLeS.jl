@@ -1,10 +1,8 @@
-Copyright (c) 2019: Abel Soares Siqueira and Dominique Orban
+Copyright (c) 2019-2020: Abel Soares Siqueira and Dominique Orban
 
 CaNNOLeS.jl is licensed under the [MPL version 2.0](https://www.mozilla.org/MPL/2.0/).
 
-Please, also cite the paper:
-
-    Paper
+Please, also [cite the paper](CITATION.bib).
 
 ## License
 
