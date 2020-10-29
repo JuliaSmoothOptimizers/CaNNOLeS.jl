@@ -1,5 +1,9 @@
 # CaNNOLeS - Constrained and NoNlinear Optimizer of Least Squares
 
+[![Travis CI](https://img.shields.io/travis/JuliaSmoothOptimizers/CaNNOLeS.jl.svg?style=flat-square)](https://travis-ci.org/JuliaSmoothOptimizers/CaNNOLeS.jl)
+[![Coveralls](https://img.shields.io/coveralls/JuliaSmoothOptimizers/CaNNOLeS.jl.svg?style=flat-square)]()
+[![GitHub](https://img.shields.io/github/release/JuliaSmoothOptimizers/CaNNOLeS.svg?style=flat-square)](https://github.com/JuliaSmoothOptimizers/CaNNOLeS/releases)
+
 CaNNOLeS is a solver for equality-constrained nonlinear least-squares problems, i.e.,
 optimization problems of the form
 
@@ -11,7 +15,7 @@ It also uses [HSL.jl](https://github.com/JuliaSmoothOptimizers/HSL.jl)'s `MA57` 
 
 Cite as
 
-> Orban, D., & Siqueira, A. S. (2019).
+> Orban, D., & Siqueira, A. S.
 > A Regularization Method for Constrained Nonlinear Least Squares.
 > Computational Optimization and Applications 76, 961–989 (2020).
 > [10.1007/s10589-020-00201-2](https://doi.org/10.1007/s10589-020-00201-2)
