@@ -41,7 +41,7 @@ function cannoles_tests()
                            (x -> F_larger(x,3), c_quad, [0.5; 1.0; 1.5], [1.0647; 1.215; 1.546])
                           ]
       m = length(c(x0))
-      nls = ADNLSModel(F, x0, length(F(x0)), c=c, lcon=zeros(m), ucon=zeros(m))
+      nls = ADNLSModel(F, x0, length(F(x0)), c, zeros(m), zeros(m))
       stats = with_logger(NullLogger()) do
         cannoles(nls, linsolve=:ldlfactorizations)
       end
@@ -50,7 +50,7 @@ function cannoles_tests()
   end
 
   @testset "Multiprecision" begin
-    nls = ADNLSModel(F_Rosen, [-1.2; 1.0], 2, c=c_linear, lcon=[0.0], ucon=[0.0])
+    nls = ADNLSModel(F_Rosen, [-1.2; 1.0], 2, c_linear, [0.0], [0.0])
     for T in (Float16, Float32, Float64, BigFloat)
       stats = with_logger(NullLogger()) do
         cannoles(nls, x=T[-1.2; 1.0], linsolve=:ldlfactorizations)

@@ -1,7 +1,7 @@
 name = "CaNNOLeS"
 uuid = "5a1c9e79-9c58-5ec0-afc4-3298fdea2875"
 authors = ["Abel Soares Siqueira <abel.s.siqueira@gmail.com>", "Dominique Orban <dominique.orban@gerad.ca>"]
-version = "0.2.0"
+version = "0.3.0"
 
 [deps]
 HSL = "34c5aeac-e683-54a6-a0e9-6e0fdc586c50"
@@ -15,12 +15,12 @@ SolverTools = "b5612192-2639-5dc1-abfe-fbedd65fab29"
 SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 
 [compat]
-HSL = "0.1"
+HSL = "0.1, 0.2"
 Krylov = "0.4, 1"
 LDLFactorizations = "0.4"
 LinearOperators = "0.7, 1"
-NLPModels = "0.12"
-SolverTools = "0.1"
+NLPModels = "0.13"
+SolverTools = "0.2, 0.3"
 julia = "1"
 
 [extras]
