@@ -1,7 +1,8 @@
 # CaNNOLeS - Constrained and NoNlinear Optimizer of Least Squares
 
-[![Travis CI](https://img.shields.io/travis/JuliaSmoothOptimizers/CaNNOLeS.jl.svg?style=flat-square)](https://travis-ci.org/JuliaSmoothOptimizers/CaNNOLeS.jl)
-[![Coveralls](https://img.shields.io/coveralls/JuliaSmoothOptimizers/CaNNOLeS.jl.svg?style=flat-square)]()
+![CI](https://github.com/JuliaSmoothOptimizers/CaNNOLeS.jl/workflows/CI/badge.svg?branch=master)
+[![Cirrus CI - Base Branch Build Status](https://img.shields.io/cirrus/github/JuliaSmoothOptimizers/CaNNOLeS.jl?logo=Cirrus%20CI)](https://cirrus-ci.com/github/JuliaSmoothOptimizers/CaNNOLeS.jl)
+[![codecov](https://codecov.io/gh/JuliaSmoothOptimizers/CaNNOLeS.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/JuliaSmoothOptimizers/CaNNOLeS.jl)
 [![GitHub](https://img.shields.io/github/release/JuliaSmoothOptimizers/CaNNOLeS.svg?style=flat-square)](https://github.com/JuliaSmoothOptimizers/CaNNOLeS/releases)
 
 CaNNOLeS is a solver for equality-constrained nonlinear least-squares problems, i.e.,
