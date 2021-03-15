@@ -2,7 +2,7 @@
 using Logging, Test
 
 # JSO packages
-using NLPModels
+using ADNLPModels, NLPModels
 
 # this package
 using CaNNOLeS
