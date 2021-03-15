@@ -19,12 +19,13 @@ HSL = "0.1, 0.2"
 Krylov = "0.4, 1"
 LDLFactorizations = "0.4"
 LinearOperators = "0.7, 1"
-NLPModels = "0.13"
-SolverTools = "0.2, 0.3"
+NLPModels = "0.14"
+SolverTools = "0.4"
 julia = "1"
 
 [extras]
+ADNLPModels = "54578032-b7ea-4c30-94aa-7cbd1cce6c9a"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
-test = ["Test"]
+test = ["ADNLPModels", "Test"]
