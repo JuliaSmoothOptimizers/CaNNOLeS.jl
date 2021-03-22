@@ -480,8 +480,9 @@ function newton_system(x, r, λ, Fx, rhs, LDLT, ρold, params, method, linsolve)
         A = sparse(LDLT.rows, LDLT.cols, LDLT.vals, N, N)
         A = Matrix(Symmetric(A, :L))
         M = ldl(A)
-        pos_eig = count(M.D .> params[:eig_tol])
-        zer_eig = count(abs.(M.D) .≤ params[:eig_tol])
+        D = diag(M.D)
+        pos_eig = count(D .> params[:eig_tol])
+        zer_eig = count(abs.(D) .≤ params[:eig_tol])
         success = pos_eig == nvar && zer_eig == 0
         LDLT.factor = M
         return success
