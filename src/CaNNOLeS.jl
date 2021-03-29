@@ -5,7 +5,7 @@ module CaNNOLeS
 using LinearAlgebra, Logging, SparseArrays
 
 # JSO packages
-using HSL, Krylov, LDLFactorizations, LinearOperators, NLPModels, SolverTools
+using HSL, Krylov, LDLFactorizations, LinearOperators, NLPModels, SolverCore
 
 function __init__()
   global available_linsolvers = [:ldlfactorizations]
