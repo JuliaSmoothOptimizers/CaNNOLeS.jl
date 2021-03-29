@@ -11,7 +11,7 @@ LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 LinearOperators = "5c8ed15e-5a4c-59e4-a42b-c7e8811fb125"
 Logging = "56ddb016-857b-54e1-b83d-db4d58db5568"
 NLPModels = "a4795742-8479-5a88-8948-cc11e1c8c1a6"
-SolverTools = "b5612192-2639-5dc1-abfe-fbedd65fab29"
+SolverCore = "ff4d7338-4cf1-434d-91df-b86cb86fb843"
 SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 
 [compat]
@@ -20,7 +20,7 @@ Krylov = "0.4, 0.5, 0.6, 0.7"
 LDLFactorizations = "0.5, 0.6, 0.7, 0.8"
 LinearOperators = "0.7, 1"
 NLPModels = "0.14"
-SolverTools = "0.4"
+SolverCore = "0.1"
 julia = "1"
 
 [extras]
