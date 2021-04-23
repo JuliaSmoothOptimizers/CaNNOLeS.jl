@@ -4,7 +4,7 @@ abstract type LinearSolverStruct end
 
 if isdefined(HSL, :libhsl_ma57)
   mutable struct MA57Struct <: LinearSolverStruct
-    factor :: Ma57
+    factor::Ma57
   end
 
   function MA57Struct(N, rows, cols, vals)
@@ -17,10 +17,10 @@ else
 end
 
 mutable struct LDLFactStruct <: LinearSolverStruct
-  rows :: Vector{Int}
-  cols :: Vector{Int}
-  vals :: Vector
-  factor :: Union{LDLFactorizations.LDLFactorization,Nothing}
+  rows::Vector{Int}
+  cols::Vector{Int}
+  vals::Vector
+  factor::Union{LDLFactorizations.LDLFactorization, Nothing}
 end
 
 function LDLFactStruct(rows, cols, vals)

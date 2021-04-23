@@ -31,22 +31,22 @@ Implementation of a solver for Nonlinear Least Squares with nonlinear constraint
 Input:
 - `nls :: AbstractNLSModel`: Nonlinear least-squares model created using `NLPModels`.
 """
-function cannoles(nls :: AbstractNLSModel;
-                  x :: AbstractVector = copy(nls.meta.x0),
-                  λ :: AbstractVector = eltype(x)[],
-                  method :: Symbol = :Newton,
-                  merit :: Symbol = :auglag, # :norm1, :auglag
-                  linsolve :: Symbol = :ma57, # :ma57, :ma97, :ldlfactorizations
-                  max_f :: Real = 100000,
-                  max_time :: Real = 30.0,
-                  max_inner :: Int = 10000,
-                  ϵtol :: Real = √eps(eltype(x)),
-                  check_small_residual :: Bool = true,
-                  always_accept_extrapolation :: Bool = false,
-                  ϵkchoice = :delta, # :delta or :slow
-                  δdec :: Real = eltype(x)(0.1)
-  )
-
+function cannoles(
+  nls::AbstractNLSModel;
+  x::AbstractVector = copy(nls.meta.x0),
+  λ::AbstractVector = eltype(x)[],
+  method::Symbol = :Newton,
+  merit::Symbol = :auglag, # :norm1, :auglag
+  linsolve::Symbol = :ma57, # :ma57, :ma97, :ldlfactorizations
+  max_f::Real = 100000,
+  max_time::Real = 30.0,
+  max_inner::Int = 10000,
+  ϵtol::Real = √eps(eltype(x)),
+  check_small_residual::Bool = true,
+  always_accept_extrapolation::Bool = false,
+  ϵkchoice = :delta, # :delta or :slow
+  δdec::Real = eltype(x)(0.1),
+)
   start_time = time()
   avail_mtds = [:Newton, :LM, :Newton_noFHess, :Newton_vanishing]
   if !(method in avail_mtds)
@@ -70,10 +70,10 @@ function cannoles(nls :: AbstractNLSModel;
 
   # Parameters
   params = Dict{Symbol, T}()
-  ρmin, ρ0, ρmax = √ϵM, ϵM^T(1/3), min(ϵM^T(-2.0), prevfloat(T(Inf)))
+  ρmin, ρ0, ρmax = √ϵM, ϵM^T(1 / 3), min(ϵM^T(-2.0), prevfloat(T(Inf)))
   ρ = ρold = zero(T)
   δ, δmin = one(T), √ϵM
-  κdec, κinc, κlargeinc = T(1/3), T(8.0), min(T(100.0), T.size * 16)
+  κdec, κinc, κlargeinc = T(1 / 3), T(8.0), min(T(100.0), T.size * 16)
   eig_tol = ϵM
   params[:eig_tol] = eig_tol
   params[:δmin] = δmin
@@ -83,11 +83,12 @@ function cannoles(nls :: AbstractNLSModel;
   params[:ρ0] = ρ0
   params[:ρmax] = ρmax
   params[:ρmin] = ρmin
-  params[:γA] = ϵM^T(1/4)
+  params[:γA] = ϵM^T(1 / 4)
 
   # Allocation and structure of Newton system matrix
   # G = [Hx + ρI; Jx -I; Jcx 0 -δI]
-  nnzhF, nnzhc, nnzjF, nnzjc = nls.nls_meta.nnzh, ncon > 0 ? nls.meta.nnzh : 0, nls.nls_meta.nnzj, nls.meta.nnzj
+  nnzhF, nnzhc, nnzjF, nnzjc =
+    nls.nls_meta.nnzh, ncon > 0 ? nls.meta.nnzh : 0, nls.nls_meta.nnzj, nls.meta.nnzj
   nnzNS = nnzhF + nnzhc + nnzjF + nnzjc + nvar + nequ + ncon
   # Hx
   hsr_rows, hsr_cols = hess_structure_residual(nls)
@@ -121,11 +122,12 @@ function cannoles(nls :: AbstractNLSModel;
   end
   # -I
   sI = nnzhF + nnzhc + nnzjF + nnzjc .+ (1:nequ)
-  rows[sI], cols[sI], vals[sI] = nvar+1:nvar+nequ, nvar+1:nvar+nequ, -ones(nequ)
+  rows[sI], cols[sI], vals[sI] = (nvar + 1):(nvar + nequ), (nvar + 1):(nvar + nequ), -ones(nequ)
   # -δI
   if ncon > 0
     sI = nnzhF + nnzhc + nnzjF + nnzjc + nequ .+ (1:ncon)
-    rows[sI], cols[sI] = nvar+nequ+1:nvar+nequ+ncon, nvar+nequ+1:nvar+nequ+ncon
+    rows[sI], cols[sI] =
+      (nvar + nequ + 1):(nvar + nequ + ncon), (nvar + nequ + 1):(nvar + nequ + ncon)
   end
   # ρI
   sI = nnzhF + nnzhc + nnzjF + nnzjc + nequ + ncon .+ (1:nvar)
@@ -134,7 +136,10 @@ function cannoles(nls :: AbstractNLSModel;
   # Shorter function definitions
   F!(x, Fx) = residual!(nls, x, Fx)
   crhs = T.(nls.meta.lcon)
-  c!(x, cx) = if ncon == 0 crhs; else
+  c!(x, cx) =
+    if ncon == 0
+      crhs
+    else
       begin
         cons!(nls, x, cx)
         cx .-= crhs
@@ -179,12 +184,12 @@ function cannoles(nls :: AbstractNLSModel;
   end
   @debug("Starting values", x, Fx, λ)
 
-  dual    = Jxtr - Jcx' * λ
-  primal  = [Fx - r; cx]
+  dual = Jxtr - Jcx' * λ
+  primal = [Fx - r; cx]
 
   rhs = zeros(T, nvar + nequ + ncon)
 
-  normdualhat   = normdual   = norm(dual, Inf)
+  normdualhat = normdual = norm(dual, Inf)
   normprimalhat = normprimal = norm(primal, Inf)
 
   LDLT = if linsolve == :ma57
@@ -241,10 +246,22 @@ function cannoles(nls :: AbstractNLSModel;
 
   ϵk = 1e3
 
-  @info log_header([:I, :nF, :fx, :Δt, :dual, :Fxminusr, :primal, :α, :η, :ρ, :δ, :in_it, :nbk],
-                   [Int, Int, T, Float64, T, T, T, T, T, T, T, Int, Int],
-                   hdr_override=Dict(:nF=>"#F", :dual=>"‖∇L‖", :Fxminusr=>"‖Fx - r‖", :primal=>"‖c(x)‖"))
-  @info log_row(Any[0, sum_counters(nls), fx, 0.0, normdual, norm(primal[1:nequ]), norm(primal[nequ+1:end])])
+  @info log_header(
+    [:I, :nF, :fx, :Δt, :dual, :Fxminusr, :primal, :α, :η, :ρ, :δ, :in_it, :nbk],
+    [Int, Int, T, Float64, T, T, T, T, T, T, T, Int, Int],
+    hdr_override = Dict(:nF => "#F", :dual => "‖∇L‖", :Fxminusr => "‖Fx - r‖", :primal => "‖c(x)‖"),
+  )
+  @info log_row(
+    Any[
+      0,
+      sum_counters(nls),
+      fx,
+      0.0,
+      normdual,
+      norm(primal[1:nequ]),
+      norm(primal[(nequ + 1):end]),
+    ],
+  )
 
   while !(solved || tired || broken)
     # |G(w) - μe|
@@ -257,7 +274,7 @@ function cannoles(nls :: AbstractNLSModel;
     combined_optimality_hat = T(Inf)
     first_iteration = true
     while first_iteration ||
-          !(combined_optimality_hat <= T(0.99) * combined_optimality + ϵk || tired)
+      !(combined_optimality_hat <= T(0.99) * combined_optimality + ϵk || tired)
       first_iteration = false
 
       ### System solution
@@ -271,7 +288,7 @@ function cannoles(nls :: AbstractNLSModel;
           vals[sI] .= Jx_vals
           if ncon > 0
             sI = nnzhF .+ (1:nnzhc)
-            @views hess_coord!(nls, x, -λ, vals[sI], obj_weight=zero(T))
+            @views hess_coord!(nls, x, -λ, vals[sI], obj_weight = zero(T))
             sI = nnzhF + nnzhc + nnzjF .+ (1:nnzjc)
             vals[sI] .= Jcx_vals
             sI = nnzhF + nnzhc + nnzjF + nnzjc + nequ .+ (1:ncon)
@@ -280,7 +297,7 @@ function cannoles(nls :: AbstractNLSModel;
           sI = nnzhF + nnzhc + nnzjF + nnzjc + nequ + ncon .+ (1:nvar)
           vals[sI] .= zero(T)
           #=
-        elseif method == :LM
+          elseif method == :LM
           #Hx = spzeros(nvar, nvar)
           Λ = [norm(Jx[:,j])^2 for j = 1:nvar] * max(1e-10, min(1e8, damp))
           #Λ = ones(nvar) * max(1e-10, min(1e8, damp))
@@ -330,10 +347,32 @@ function cannoles(nls :: AbstractNLSModel;
         F!(xt, Ft)
         c!(xt, ct)
       else
-        η, α, ϕx, Dϕ, nbki = line_search(x, r, λ, dx, dr, dλ,
-                                        Fx, cx, Jx, Jcx, ϕ, xt, rt, λt,
-                                        Ft, ct, F!, c!, ρ, δ, η,
-                                        false, merit, params)
+        η, α, ϕx, Dϕ, nbki = line_search(
+          x,
+          r,
+          λ,
+          dx,
+          dr,
+          dλ,
+          Fx,
+          cx,
+          Jx,
+          Jcx,
+          ϕ,
+          xt,
+          rt,
+          λt,
+          Ft,
+          ct,
+          F!,
+          c!,
+          ρ,
+          δ,
+          η,
+          false,
+          merit,
+          params,
+        )
 
         nbk += nbki
 
@@ -358,17 +397,18 @@ function cannoles(nls :: AbstractNLSModel;
       end
       Jct = ncon > 0 ? sparse(Jcx_rows, Jcx_cols, Jct_vals, ncon, nvar) : spzeros(ncon, nvar)
 
-      dual   .= Jt' * rt - Jct' * λt
+      dual .= Jt' * rt - Jct' * λt
       primal .= [Ft - rt; ct]
 
       # dual, primal and comp overwrite the previous vectors, but normdualhat doesn't
-      normdualhat   = norm(dual, Inf)
+      normdualhat = norm(dual, Inf)
       normprimalhat = norm(primal, Inf)
 
       combined_optimality_hat = normdualhat + normprimalhat
 
-      if inner_iter > 0 || always_accept_extrapolation ||
-        combined_optimality_hat <= T(0.99) * combined_optimality + ϵk
+      if inner_iter > 0 ||
+         always_accept_extrapolation ||
+         combined_optimality_hat <= T(0.99) * combined_optimality + ϵk
         x .= xt
         r .= rt
         Fx .= Ft
@@ -388,21 +428,37 @@ function cannoles(nls :: AbstractNLSModel;
         dual .= Jx' * r - Jcx' * λ
       end
 
-      if ncon > 0 && inner_iter > 0 && normdualhat ≤ T(0.99) * normdual + ϵk / 2 &&
-          normprimalhat > T(0.99) * normprimal + ϵk / 2
+      if ncon > 0 &&
+         inner_iter > 0 &&
+         normdualhat ≤ T(0.99) * normdual + ϵk / 2 &&
+         normprimalhat > T(0.99) * normprimal + ϵk / 2
         δ = max(δ / 10, δmin)
       end
 
       inner_iter += 1
       elapsed_time = time() - start_time
-      tired = sum_counters(nls) > max_f || elapsed_time > max_time ||
-              inner_iter > max_inner
+      tired = sum_counters(nls) > max_f || elapsed_time > max_time || inner_iter > max_inner
 
-      @info log_row(Any[iter, sum_counters(nls), fx, elapsed_time, normdualhat, norm(primal[1:nequ]),
-                        norm(primal[nequ+1:end]), α, η, ρ, δ, inner_iter, nbk])
+      @info log_row(
+        Any[
+          iter,
+          sum_counters(nls),
+          fx,
+          elapsed_time,
+          normdualhat,
+          norm(primal[1:nequ]),
+          norm(primal[(nequ + 1):end]),
+          α,
+          η,
+          ρ,
+          δ,
+          inner_iter,
+          nbk,
+        ],
+      )
     end
 
-    normdual   = normdualhat
+    normdual = normdualhat
     normprimal = normprimalhat
 
     elapsed_time = time() - start_time
@@ -421,19 +477,32 @@ function cannoles(nls :: AbstractNLSModel;
       first_order = max(normdual / sd, normprimal) <= ϵtol
     end
     solved = first_order
-    tired = sum_counters(nls) > max_f || elapsed_time > max_time ||
-            inner_iter > max_inner
+    tired = sum_counters(nls) > max_f || elapsed_time > max_time || inner_iter > max_inner
 
-    @info log_row(Any[iter, sum_counters(nls), fx, elapsed_time, normdual, norm(primal[1:nequ]),
-                      norm(primal[nequ+1:end]), 0.0, η, ρ, δ, inner_iter, nbk])
+    @info log_row(
+      Any[
+        iter,
+        sum_counters(nls),
+        fx,
+        elapsed_time,
+        normdual,
+        norm(primal[1:nequ]),
+        norm(primal[(nequ + 1):end]),
+        0.0,
+        η,
+        ρ,
+        δ,
+        inner_iter,
+        nbk,
+      ],
+    )
     iter += 1
-
   end
 
   status = if first_order
     :first_order
-  #elseif small_residual
-  #  :small_residual
+    #elseif small_residual
+    #  :small_residual
   elseif tired
     if sum_counters(nls) > max_f
       :max_eval
@@ -448,15 +517,22 @@ function cannoles(nls :: AbstractNLSModel;
 
   elapsed_time = time() - start_time
 
-  return GenericExecutionStats(status, nls, solution=x, objective=dot(Fx, Fx) / 2,
-                               dual_feas=normdual, elapsed_time=elapsed_time, primal_feas=norm(primal[nequ+1:end]),
-                               solver_specific=Dict(:nbk => nbk,
-                                                    :nfact => nfact,
-                                                    :nlinsolve => nlinsolve,
-                                                    :multipliers => λ,
-                                                    :internal_msg => internal_msg,
-                                                   )
-                              )
+  return GenericExecutionStats(
+    status,
+    nls,
+    solution = x,
+    objective = dot(Fx, Fx) / 2,
+    dual_feas = normdual,
+    elapsed_time = elapsed_time,
+    primal_feas = norm(primal[(nequ + 1):end]),
+    solver_specific = Dict(
+      :nbk => nbk,
+      :nfact => nfact,
+      :nlinsolve => nlinsolve,
+      :multipliers => λ,
+      :internal_msg => internal_msg,
+    ),
+  )
 end
 
 function newton_system(x, r, λ, Fx, rhs, LDLT, ρold, params, method, linsolve)
@@ -492,7 +568,7 @@ function newton_system(x, r, λ, Fx, rhs, LDLT, ρold, params, method, linsolve)
     else
       error("Can't handle $linsolve")
       #=
-    elseif linsolve == :ma97
+      elseif linsolve == :ma97
       LDLT = Ma97(B)
       ma97_factorize!(LDLT, matrix_type=:real_indef)
       success = LDLT.info.flag == 0 && LDLT.info.num_neg == nequ + ncon
@@ -509,7 +585,7 @@ function newton_system(x, r, λ, Fx, rhs, LDLT, ρold, params, method, linsolve)
   elseif linsolve == :ldlfactorizations
     LDLT.vals
   end
-  sI = length(vals)-nvar+1:length(vals)
+  sI = (length(vals) - nvar + 1):length(vals)
 
   if !success
     ρ = ρold == 0 ? params[:ρ0] : max(params[:ρmin], params[:κdec] * ρold)
@@ -536,7 +612,7 @@ function newton_system(x, r, λ, Fx, rhs, LDLT, ρold, params, method, linsolve)
     @assert LDLT.factor != nothing
     -(LDLT.factor \ rhs)
     #=
-  elseif linsolve == :ma97
+    elseif linsolve == :ma97
     ma97_solve(LDLT, -rhs)
     =#
   end
@@ -544,9 +620,32 @@ function newton_system(x, r, λ, Fx, rhs, LDLT, ρold, params, method, linsolve)
   return d, ρ, ρold, nfact
 end
 
-function line_search(x, r, λ, dx, dr, dλ, Fx,
-                     cx, Jx, Jcx, ϕ, xt, rt, λt, Ft, ct, F!, c!, ρ,
-                     δ, η, trial_computed, merit, params)
+function line_search(
+  x,
+  r,
+  λ,
+  dx,
+  dr,
+  dλ,
+  Fx,
+  cx,
+  Jx,
+  Jcx,
+  ϕ,
+  xt,
+  rt,
+  λt,
+  Ft,
+  ct,
+  F!,
+  c!,
+  ρ,
+  δ,
+  η,
+  trial_computed,
+  merit,
+  params,
+)
   T = eltype(x)
   Dϕ = dot(Jx' * Fx, dx) - dot(dx, Jcx' * (λ - cx / δ))
 
@@ -561,7 +660,7 @@ function line_search(x, r, λ, dx, dr, dλ, Fx,
     c!(xt, ct)
   end
 
-  ϕx = ϕ(x,  λ, Fx, cx, η)
+  ϕx = ϕ(x, λ, Fx, cx, η)
   ϕt = ϕ(xt, λ, Ft, ct, η)
 
   α = one(T)
