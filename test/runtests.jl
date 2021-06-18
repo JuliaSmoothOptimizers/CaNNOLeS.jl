@@ -52,8 +52,8 @@ function cannoles_tests()
   end
 
   @testset "Multiprecision" begin
-    nls = ADNLSModel(F_Rosen, [-1.2; 1.0], 2, c_linear, [0.0], [0.0])
     for T in (Float16, Float32, Float64, BigFloat)
+      nls = ADNLSModel(F_Rosen, T[-1.2; 1.0], 2, c_linear, T[0.0], T[0.0])
       stats = with_logger(NullLogger()) do
         cannoles(nls, x = T[-1.2; 1.0], linsolve = :ldlfactorizations)
       end
