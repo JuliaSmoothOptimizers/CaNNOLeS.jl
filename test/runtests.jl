@@ -7,6 +7,16 @@ using ADNLPModels, NLPModels
 # this package
 using CaNNOLeS
 
+mutable struct DummyModel{T, S} <: AbstractNLSModel{T, S}
+  meta::NLPModelMeta{T, S}
+end
+
+nls = ADNLSModel(x -> x, zeros(5), 5, zeros(5), ones(5))
+@test_throws ErrorException("Problem has inequalities, can't solve it") cannoles(nls)
+
+nls = DummyModel(NLPModelMeta(1, minimize = false))
+@test_throws ErrorException("CaNNOLeS only works for minimization problem") cannoles(nls)
+
 function cannoles_tests()
   F_linear(x) = [x[1] - 2; x[2] - 3]
   F_Rosen(x) = [x[1] - 1; 10 * (x[2] - x[1]^2)]
