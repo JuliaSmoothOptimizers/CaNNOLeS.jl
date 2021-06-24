@@ -63,6 +63,9 @@ function cannoles(
   if has_bounds(nls) || inequality_constrained(nls)
     error("Problem has inequalities, can't solve it")
   end
+  if !(nls.meta.minimize)
+    error("CaNNOLeS only works for minimization problem")
+  end
   ϵM = eps(T)
   nvar = nls.meta.nvar
   nequ = nls_meta(nls).nequ
