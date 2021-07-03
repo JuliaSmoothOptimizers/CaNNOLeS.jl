@@ -19,7 +19,7 @@ HSL = "0.1, 0.2"
 Krylov = "0.4, 0.5, 0.6, 0.7"
 LDLFactorizations = "0.5, 0.6, 0.7, 0.8"
 LinearOperators = "0.7, 1"
-NLPModels = "0.14, 0.15"
+NLPModels = "0.14, 0.15, 0.17"
 SolverCore = "0.1, 0.2"
 julia = "1"
 
