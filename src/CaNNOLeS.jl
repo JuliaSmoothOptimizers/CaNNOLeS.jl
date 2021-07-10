@@ -114,7 +114,7 @@ function cannoles(
   Jx_vals = zeros(T, nls.nls_meta.nnzj)
   Jt_vals = similar(Jx_vals)
   # Jcx
-  local Jcx_rows, Jcx_cols, Jcx_vals, Jct_vals
+  local Jcx_rows , Jcx_cols , Jcx_vals , Jct_vals
   if ncon > 0
     sI = nnzhF + nnzhc + nnzjF .+ (1:nnzjc)
     Jcx_rows, Jcx_cols = jac_structure(nls)
