@@ -1,5 +1,7 @@
 # CaNNOLeS - Constrained and NoNlinear Optimizer of Least Squares
 
+[![documentation](https://img.shields.io/badge/docs-stable-blue.svg)](https://JuliaSmoothOptimizers.github.io/CaNNOLeS.jl/stable)
+[![documentation](https://img.shields.io/badge/docs-dev-blue.svg)](https://JuliaSmoothOptimizers.github.io/CaNNOLeS.jl/dev)
 ![CI](https://github.com/JuliaSmoothOptimizers/CaNNOLeS.jl/workflows/CI/badge.svg?branch=main)
 [![Cirrus CI - Base Branch Build Status](https://img.shields.io/cirrus/github/JuliaSmoothOptimizers/CaNNOLeS.jl?logo=Cirrus%20CI)](https://cirrus-ci.com/github/JuliaSmoothOptimizers/CaNNOLeS.jl)
 [![codecov](https://codecov.io/gh/JuliaSmoothOptimizers/CaNNOLeS.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/JuliaSmoothOptimizers/CaNNOLeS.jl)
