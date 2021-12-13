@@ -528,11 +528,12 @@ function cannoles(
     dual_feas = normdual,
     elapsed_time = elapsed_time,
     primal_feas = norm(primal[(nequ + 1):end]),
+    multipliers = λ,
+    iter = iter,
     solver_specific = Dict(
       :nbk => nbk,
       :nfact => nfact,
       :nlinsolve => nlinsolve,
-      :multipliers => λ,
       :internal_msg => internal_msg,
     ),
   )
