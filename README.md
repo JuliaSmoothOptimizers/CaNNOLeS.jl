@@ -30,10 +30,10 @@ Check [CITATION.bib](CITATION.bib) for bibtex.
 1. Follow [HSL.jl](https://github.com/JuliaSmoothOptimizers/HSL.jl)'s `MA57` installation if possible. Otherwise [LDLFactorizations.jl](https://github.com/JuliaSmoothOptimizers/LDLFactorizations.jl) will be used.
 2. `pkg> add CaNNOLeS`
 
-## Example
+## Examples
 
 ```julia
-using CaNNOLeS, NLPModels
+using CaNNOLeS, ADNLPModels
 
 # Rosenbrock
 nls = ADNLSModel(x -> [x[1] - 1; 10 * (x[2] - x[1]^2)], [-1.2; 1.0], 2)
