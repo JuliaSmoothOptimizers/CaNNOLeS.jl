@@ -15,5 +15,5 @@ SolverBenchmark = "581a75fa-a23a-52d0-a590-d6201de2218a"
 SolverCore = "ff4d7338-4cf1-434d-91df-b86cb86fb843"
 
 [compat]
-ADNLPModels = "0.2"
+ADNLPModels = "0.3"
 Documenter = "0.26"

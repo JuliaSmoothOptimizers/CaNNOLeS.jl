@@ -51,7 +51,7 @@ using JLD2
 @save "trunk_cannoles_$(string(length(problems))).jld2" stats
 ```
 The result of the benchmark can be explored via tables,
-``` @example ex1
+```julia
 pretty_stats(stats[:cannoles])
 ```
 or it can also be used to make performance profiles.
