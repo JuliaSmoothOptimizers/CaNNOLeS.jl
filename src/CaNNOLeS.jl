@@ -520,23 +520,19 @@ function cannoles(
 
   elapsed_time = time() - start_time
 
-  return GenericExecutionStats(
-    status,
-    nls,
-    solution = x,
-    objective = dot(Fx, Fx) / 2,
-    dual_feas = normdual,
-    elapsed_time = elapsed_time,
-    primal_feas = norm(primal[(nequ + 1):end]),
-    multipliers = λ,
-    iter = iter,
-    solver_specific = Dict(
-      :nbk => nbk,
-      :nfact => nfact,
-      :nlinsolve => nlinsolve,
-      :internal_msg => internal_msg,
-    ),
-  )
+  stats = GenericExecutionStats(nls)
+  set_status!(stats, status)
+  set_solution!(stats, x)
+  set_objective!(stats, dot(Fx, Fx) / 2)
+  set_residuals!(stats, norm(primal[(nequ + 1):end]), normdual)
+  set_iter!(stats, iter)
+  set_time!(stats, elapsed_time)
+  set_constraint_multipliers!(stats, λ)
+  set_solver_specific!(stats, :nbk, nbk)
+  set_solver_specific!(stats, :nfact, nfact)
+  set_solver_specific!(stats, :nlinsolve, nlinsolve)
+  set_solver_specific!(stats, :internal_msg, internal_msg)
+  return stats
 end
 
 function newton_system(x, r, λ, Fx, rhs, LDLT, ρold, params, method, linsolve)
