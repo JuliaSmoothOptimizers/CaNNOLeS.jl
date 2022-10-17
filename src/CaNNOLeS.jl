@@ -28,12 +28,48 @@ Implementation of a solver for Nonlinear Least Squares with nonlinear constraint
 
   min   f(x) = ¹/₂‖F(x)‖²   s.t.  c(x) = 0
 
+For advanced usage, first define a `CaNNOLeSSolver` to preallocate the memory used in the algorithm, and then call `solve!`:
+  solver = CaNNOLeSSolver(nls)
+  solve!(solver, nls; kwargs...)
+
+or even pre-allocate the output:
+
+  stats = GenericExecutionStats(nls)
+  solve!(solver, nls, stats; kwargs...)
+
 Input:
 - `nls :: AbstractNLSModel`: Nonlinear least-squares model created using `NLPModels`.
 """
-function cannoles(
-  nls::AbstractNLSModel;
-  x::AbstractVector = copy(nls.meta.x0),
+mutable struct CaNNOLeSSolver{T, V} <: AbstractOptimizationSolver
+  x::V
+end
+
+function CaNNOLeSSolver(nls::AbstractNLSModel{T, V}) where {T, V}
+  x = similar(nls.meta.x0)
+  return CaNNOLeSSolver{T, V}(x)
+end
+
+function SolverCore.reset!(solver::CaNNOLeSSolver)
+  solver
+end
+SolverCore.reset!(solver::CaNNOLeSSolver, ::AbstractNLPModel) = reset!(solver)
+
+@doc (@doc CaNNOLeSSolver) function cannoles(nls::AbstractNLSModel; kwargs...)
+  if has_bounds(nls) || inequality_constrained(nls)
+    error("Problem has inequalities, can't solve it")
+  end
+  if !(nls.meta.minimize)
+    error("CaNNOLeS only works for minimization problem")
+  end
+  solver = CaNNOLeSSolver(nls)
+  return SolverCore.solve!(solver, nls; kwargs...)
+end
+
+function SolverCore.solve!(
+  solver::CaNNOLeSSolver,
+  nls::AbstractNLSModel,
+  stats::GenericExecutionStats;
+  x::AbstractVector = nls.meta.x0,
   λ::AbstractVector = eltype(x)[],
   method::Symbol = :Newton,
   merit::Symbol = :auglag, # :norm1, :auglag
@@ -60,16 +96,12 @@ function cannoles(
     @warn("linsolve $linsolve not available. Using :ldlfactorizations instead")
     linsolve = :ldlfactorizations
   end
-  if has_bounds(nls) || inequality_constrained(nls)
-    error("Problem has inequalities, can't solve it")
-  end
-  if !(nls.meta.minimize)
-    error("CaNNOLeS only works for minimization problem")
-  end
   ϵM = eps(T)
   nvar = nls.meta.nvar
   nequ = nls_meta(nls).nequ
   ncon = nls.meta.ncon
+
+  x = solver.x .= x
 
   # Parameters
   params = Dict{Symbol, T}()
@@ -520,7 +552,6 @@ function cannoles(
 
   elapsed_time = time() - start_time
 
-  stats = GenericExecutionStats(nls)
   set_status!(stats, status)
   set_solution!(stats, x)
   set_objective!(stats, dot(Fx, Fx) / 2)
