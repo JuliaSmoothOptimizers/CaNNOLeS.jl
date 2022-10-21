@@ -17,7 +17,7 @@ function __init__()
   end
 end
 
-export cannoles
+export cannoles, CaNNOLeSSolver
 
 include("solver_types.jl")
 
@@ -83,6 +83,7 @@ function SolverCore.solve!(
   ϵkchoice = :delta, # :delta or :slow
   δdec::Real = eltype(x)(0.1),
 )
+  reset!(stats)
   start_time = time()
   avail_mtds = [:Newton, :LM, :Newton_noFHess, :Newton_vanishing]
   if !(method in avail_mtds)

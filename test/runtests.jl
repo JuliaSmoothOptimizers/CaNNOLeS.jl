@@ -2,7 +2,7 @@
 using Logging, Test
 
 # JSO packages
-using ADNLPModels, NLPModels
+using ADNLPModels, NLPModels, SolverCore
 
 # this package
 using CaNNOLeS
@@ -70,6 +70,62 @@ function cannoles_tests()
       @test isapprox(stats.solution, [0.6188; 0.3812], atol = max(1e-4, eps(T)^T(0.25)))
     end
   end
+end
+
+@testset "Re-solve with a different initial guess" begin
+  nls = ADNLSModel(
+    x -> [x[1] - 1],
+    [-1.2; 1.0],
+    1,
+    x -> [10 * (x[2] - x[1]^2)],
+    zeros(1),
+    zeros(1),
+    name = "HS6",
+  )
+  stats = GenericExecutionStats(nls)
+  solver = CaNNOLeSSolver(nls)
+  stats = solve!(solver, nls, stats)
+  @test stats.status_reliable && stats.status == :first_order
+  @test stats.solution_reliable && isapprox(stats.solution, [1.0; 1.0], atol = 1e-6)
+
+  nls.meta.x0 .= 10.0
+  reset!(solver)
+
+  stats = solve!(solver, nls, stats)
+  @test stats.status_reliable && stats.status == :first_order
+  @test stats.solution_reliable && isapprox(stats.solution, [1.0; 1.0], atol = 1e-6)
+end
+
+@testset "Re-solve with a different problem" begin
+  nls = ADNLSModel(
+    x -> [x[1] - 1],
+    [-1.2; 1.0],
+    1,
+    x -> [10 * (x[2] - x[1]^2)],
+    zeros(1),
+    zeros(1),
+    name = "HS6",
+  )
+  stats = GenericExecutionStats(nls)
+  solver = CaNNOLeSSolver(nls)
+  stats = solve!(solver, nls, stats)
+  @test stats.status_reliable && stats.status == :first_order
+  @test stats.solution_reliable && isapprox(stats.solution, [1.0; 1.0], atol = 1e-6)
+
+  nlp = ADNLSModel(
+    x -> [x[1]],
+    [-1.2; 1.0],
+    1,
+    x -> [10 * (x[2] - x[1]^2)],
+    zeros(1),
+    zeros(1),
+    name = "shifted HS6",
+  )
+  reset!(solver, nlp)
+
+  stats = solve!(solver, nlp, stats)
+  @test stats.status_reliable && stats.status == :first_order
+  @test stats.solution_reliable && isapprox(stats.solution, [0.0; 0.0], atol = 1e-6)
 end
 
 cannoles_tests()
