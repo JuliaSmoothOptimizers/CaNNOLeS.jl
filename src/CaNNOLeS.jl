@@ -579,7 +579,7 @@ function newton_system(x, r, λ, Fx, rhs, LDLT, ρold, params, method, linsolve)
 
   function try_to_factorize(LDLT)
     if linsolve == :ma57
-      ma57_factorize(LDLT.factor)
+      ma57_factorize!(LDLT.factor)
       success = LDLT.factor.info.info[1] == 0 && LDLT.factor.info.num_negative_eigs == nequ + ncon
       return success
     elseif linsolve == :ldlfactorizations
