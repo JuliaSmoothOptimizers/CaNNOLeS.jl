@@ -7,6 +7,8 @@ using ADNLPModels, NLPModels, SolverCore
 # this package
 using CaNNOLeS
 
+@info(available_linsolvers)
+
 mutable struct DummyModel{T, S} <: AbstractNLSModel{T, S}
   meta::NLPModelMeta{T, S}
 end
