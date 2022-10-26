@@ -69,7 +69,8 @@ function cannoles_tests()
 
   @testset "Multiprecision" begin
     for solver in CaNNOLeS.available_linsolvers
-      precisions = solver == :ldlfactorizations ? (Float16, Float32, Float64, BigFloat) : (Float32, Float64)
+      precisions =
+        solver == :ldlfactorizations ? (Float16, Float32, Float64, BigFloat) : (Float32, Float64)
       for T in precisions
         nls = ADNLSModel(F_Rosen, T[-1.2; 1.0], 2, c_linear, T[0.0], T[0.0])
         stats = with_logger(NullLogger()) do
