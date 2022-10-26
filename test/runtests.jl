@@ -7,7 +7,7 @@ using ADNLPModels, NLPModels, SolverCore
 # this package
 using CaNNOLeS
 
-@info(available_linsolvers)
+@info("available_linsolvers: $(CaNNOLeS.available_linsolvers)")
 
 mutable struct DummyModel{T, S} <: AbstractNLSModel{T, S}
   meta::NLPModelMeta{T, S}
@@ -37,10 +37,12 @@ function cannoles_tests()
       [(x -> F_under(x, n), i * ones(n), i * ones(n)) for i = 1:5]
     ]
       nls = ADNLSModel(F, x0, length(F(x0)))
-      stats = with_logger(NullLogger()) do
-        cannoles(nls, linsolve = :ldlfactorizations)
+      for solver in CaNNOLeS.available_linsolvers
+        stats = with_logger(NullLogger()) do
+          cannoles(nls, linsolve = solver)
+        end
+        @test isapprox(stats.solution, xf, atol = 1e-4)
       end
-      @test isapprox(stats.solution, xf, atol = 1e-4)
     end
   end
 
@@ -56,20 +58,25 @@ function cannoles_tests()
     ]
       m = length(c(x0))
       nls = ADNLSModel(F, x0, length(F(x0)), c, zeros(m), zeros(m))
-      stats = with_logger(NullLogger()) do
-        cannoles(nls, linsolve = :ldlfactorizations)
+      for solver in CaNNOLeS.available_linsolvers
+        stats = with_logger(NullLogger()) do
+          cannoles(nls, linsolve = solver)
+        end
+        @test isapprox(stats.solution, xf, atol = 1e-4)
       end
-      @test isapprox(stats.solution, xf, atol = 1e-4)
     end
   end
 
   @testset "Multiprecision" begin
-    for T in (Float16, Float32, Float64, BigFloat)
-      nls = ADNLSModel(F_Rosen, T[-1.2; 1.0], 2, c_linear, T[0.0], T[0.0])
-      stats = with_logger(NullLogger()) do
-        cannoles(nls, x = T[-1.2; 1.0], linsolve = :ldlfactorizations)
+    for solver in CaNNOLeS.available_linsolvers
+      precisions = solver == :ldlfactorizations ? (Float16, Float32, Float64, BigFloat) : (Float32, Float64)
+      for T in precisions
+        nls = ADNLSModel(F_Rosen, T[-1.2; 1.0], 2, c_linear, T[0.0], T[0.0])
+        stats = with_logger(NullLogger()) do
+          cannoles(nls, x = T[-1.2; 1.0], linsolve = solver)
+        end
+        @test isapprox(stats.solution, [0.6188; 0.3812], atol = max(1e-4, eps(T)^T(0.25)))
       end
-      @test isapprox(stats.solution, [0.6188; 0.3812], atol = max(1e-4, eps(T)^T(0.25)))
     end
   end
 end
