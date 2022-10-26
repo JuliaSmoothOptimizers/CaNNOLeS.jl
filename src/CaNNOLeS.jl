@@ -12,9 +12,9 @@ function __init__()
   if isdefined(HSL, :libhsl_ma57)
     push!(available_linsolvers, :ma57)
   end
-  if isdefined(HSL, :libhsl_ma97)
-    push!(available_linsolvers, :ma97)
-  end
+  # if isdefined(HSL, :libhsl_ma97)
+  #   push!(available_linsolvers, :ma97)
+  # end
 end
 
 export cannoles, CaNNOLeSSolver
