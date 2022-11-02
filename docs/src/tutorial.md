@@ -35,7 +35,6 @@ Find below a list of the main options of `cannoles`.
 | x                           | AbstractVector | copy(nls.meta.x0) | initial guess. |
 | λ                           | AbstractVector | eltype(x)[]       | initial guess for the Lagrange mutlipliers. |
 | method                      | Symbol         | :Newton           | method to compute direction, `:Newton`, `:LM`, `:Newton_noFHess`, or `:Newton_vanishing`. |
-| merit                       | Symbol         | :auglag           | merit function: `:norm1`, `:auglag` |
 | linsolve                    | Symbol         | :ma57             | solver use to compute the factorization: `:ma57`, `:ma97`, `:ldlfactorizations` |
 | check_small_residual        | Bool           | true              | |
 | always_accept_extrapolation | Bool           | false             | |
@@ -62,5 +61,5 @@ nls = ADNLSModel(
   [0.0],
   [0.0],
 )
-stats = cannoles(nls, max_time = 10., merit = :auglag)
+stats = cannoles(nls, max_time = 10.)
 ```
