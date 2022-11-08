@@ -17,7 +17,8 @@ function __init__()
   # end
 end
 
-export cannoles, CaNNOLeSSolver
+import SolverCore.solve!
+export cannoles, CaNNOLeSSolver, solve!
 
 include("solver_types.jl")
 
@@ -26,19 +27,64 @@ include("solver_types.jl")
 
 Implementation of a solver for Nonlinear Least Squares with nonlinear constraints.
 
+``
   min   f(x) = ¹/₂‖F(x)‖²   s.t.  c(x) = 0
+``
 
 For advanced usage, first define a `CaNNOLeSSolver` to preallocate the memory used in the algorithm, and then call `solve!`:
-  solver = CaNNOLeSSolver(nls)
-  solve!(solver, nls; kwargs...)
+
+    solver = CaNNOLeSSolver(nls)
+    solve!(solver, nls; kwargs...)
 
 or even pre-allocate the output:
 
-  stats = GenericExecutionStats(nls)
-  solve!(solver, nls, stats; kwargs...)
+    stats = GenericExecutionStats(nls)
+    solve!(solver, nls, stats; kwargs...)
 
-Input:
-- `nls :: AbstractNLSModel`: Nonlinear least-squares model created using `NLPModels`.
+# Arguments
+- `nls :: AbstractNLSModel`: nonlinear least-squares model created using `NLPModels`.
+
+# Keyword arguments 
+- `x::AbstractVector = nls.meta.x0`: the initial guess;
+- `λ::AbstractVector = eltype(x)[]`: the initial Lagrange multiplier;
+- `method::Symbol = :Newton`: available methods `:Newton, :LM, :Newton_noFHess`, and `:Newton_vanishing`;
+- `linsolve::Symbol = :ma57`: solver to compute LDLt factorization. Available methods are: `:ma57`, `:ldlfactorizations`;
+- `max_f::Real = 100000`: maximum number of evaluations computed by `sum_counters(nls)`;
+- `max_time::Float64 = 30.0`: maximum time limit in seconds;
+- `max_inner::Int = 10000`: maximum number of inner iterations;
+- `ϵtol::Real = √eps(eltype(x))`: stopping tolerance;
+- `verbose::Int = 0`: if > 0, display iteration details every `verbose` iteration;
+- `check_small_residual::Bool = true`: if `true`, stop whenever ``‖F(x)‖₂² ≤ ϵtol`` and ``‖c(xᵏ)‖∞ ≤ √ϵtol``;
+- `always_accept_extrapolation::Bool = false`: if `true`, run even if the extrapolation step fails;
+- `δdec::Real = eltype(x)(0.1)`: reducing factor on the parameter `δ`.
+
+The algorithm stops when ``‖c(xᵏ)‖∞ ≤ ϵtol`` and ``‖∇F(xᵏ)ᵀF(xᵏ) - ∇c(xᵏ)ᵀλᵏ‖ ≤ ϵtol * max(1, ‖λᵏ‖ / 100ncon)``.
+
+# Output
+The value returned is a `GenericExecutionStats`, see `SolverCore.jl`.
+
+# Examples
+```jldoctest
+using CaNNOLeS, ADNLPModels
+nls = ADNLSModel(x -> x, ones(3), 3)
+stats = cannoles(nls, linsolve = :ldlfactorizations, verbose = 0)
+stats
+
+# output
+
+"Execution stats: first-order stationary"
+```
+```jldoctest
+using CaNNOLeS, ADNLPModels
+nls = ADNLSModel(x -> x, ones(3), 3)
+solver = CaNNOLeSSolver(nls)
+stats = solve!(solver, nls, linsolve = :ldlfactorizations, verbose = 0)
+stats
+
+# output
+
+"Execution stats: first-order stationary"
+```
 """
 mutable struct CaNNOLeSSolver{T, V} <: AbstractOptimizationSolver
   x::V
@@ -80,7 +126,6 @@ function SolverCore.solve!(
   verbose::Integer = 0,
   check_small_residual::Bool = true,
   always_accept_extrapolation::Bool = false,
-  ϵkchoice = :delta, # :delta or :slow
   δdec::Real = eltype(x)(0.1),
 )
   reset!(stats)
