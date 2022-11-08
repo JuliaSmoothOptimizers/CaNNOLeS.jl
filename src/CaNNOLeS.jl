@@ -77,6 +77,7 @@ function SolverCore.solve!(
   max_time::Real = 30.0,
   max_inner::Int = 10000,
   ϵtol::Real = √eps(eltype(x)),
+  verbose::Integer = 0,
   check_small_residual::Bool = true,
   always_accept_extrapolation::Bool = false,
   ϵkchoice = :delta, # :delta or :slow
@@ -281,22 +282,24 @@ function SolverCore.solve!(
 
   ϵk = 1e3
 
-  @info log_header(
-    [:I, :nF, :fx, :Δt, :dual, :Fxminusr, :primal, :α, :η, :ρ, :δ, :in_it, :nbk],
-    [Int, Int, T, Float64, T, T, T, T, T, T, T, Int, Int],
-    hdr_override = Dict(:nF => "#F", :dual => "‖∇L‖", :Fxminusr => "‖Fx - r‖", :primal => "‖c(x)‖"),
-  )
-  @info log_row(
-    Any[
-      0,
-      sum_counters(nls),
-      fx,
-      0.0,
-      normdual,
-      norm(primal[1:nequ]),
-      norm(primal[(nequ + 1):end]),
-    ],
-  )
+  if verbose > 0
+    @info log_header(
+      [:I, :nF, :fx, :Δt, :dual, :Fxminusr, :primal, :α, :η, :ρ, :δ, :in_it, :nbk],
+      [Int, Int, T, Float64, T, T, T, T, T, T, T, Int, Int],
+      hdr_override = Dict(:nF => "#F", :dual => "‖∇L‖", :Fxminusr => "‖Fx - r‖", :primal => "‖c(x)‖"),
+    )
+    @info log_row(
+      Any[
+        0,
+        sum_counters(nls),
+        fx,
+        0.0,
+        normdual,
+        norm(primal[1:nequ]),
+        norm(primal[(nequ + 1):end]),
+      ],
+    )
+  end
 
   while !(solved || tired || broken)
     # |G(w) - μe|
@@ -474,7 +477,7 @@ function SolverCore.solve!(
       elapsed_time = time() - start_time
       tired = sum_counters(nls) > max_f || elapsed_time > max_time || inner_iter > max_inner
 
-      @info log_row(
+      verbose > 0 && mod(iter, verbose) == 0 && @info log_row(
         Any[
           iter,
           sum_counters(nls),
@@ -514,7 +517,7 @@ function SolverCore.solve!(
     solved = first_order
     tired = sum_counters(nls) > max_f || elapsed_time > max_time || inner_iter > max_inner
 
-    @info log_row(
+    verbose > 0 && mod(iter, verbose) == 0 && @info log_row(
       Any[
         iter,
         sum_counters(nls),

@@ -38,9 +38,7 @@ function cannoles_tests()
     ]
       nls = ADNLSModel(F, x0, length(F(x0)))
       for solver in CaNNOLeS.available_linsolvers
-        stats = with_logger(NullLogger()) do
-          cannoles(nls, linsolve = solver)
-        end
+        stats = cannoles(nls, linsolve = solver, verbose = 0)
         @test isapprox(stats.solution, xf, atol = 1e-4)
       end
     end
@@ -59,9 +57,7 @@ function cannoles_tests()
       m = length(c(x0))
       nls = ADNLSModel(F, x0, length(F(x0)), c, zeros(m), zeros(m))
       for solver in CaNNOLeS.available_linsolvers
-        stats = with_logger(NullLogger()) do
-          cannoles(nls, linsolve = solver)
-        end
+        stats = cannoles(nls, linsolve = solver, verbose = 0)
         @test isapprox(stats.solution, xf, atol = 1e-4)
       end
     end
@@ -73,9 +69,7 @@ function cannoles_tests()
         solver == :ldlfactorizations ? (Float16, Float32, Float64, BigFloat) : (Float32, Float64)
       for T in precisions
         nls = ADNLSModel(F_Rosen, T[-1.2; 1.0], 2, c_linear, T[0.0], T[0.0])
-        stats = with_logger(NullLogger()) do
-          cannoles(nls, x = T[-1.2; 1.0], linsolve = solver)
-        end
+        stats = cannoles(nls, x = T[-1.2; 1.0], linsolve = solver, verbose = 0)
         @test isapprox(stats.solution, [0.6188; 0.3812], atol = max(1e-4, eps(T)^T(0.25)))
       end
     end
