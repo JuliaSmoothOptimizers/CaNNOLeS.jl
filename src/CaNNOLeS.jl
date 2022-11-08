@@ -331,7 +331,12 @@ function SolverCore.solve!(
     @info log_header(
       [:I, :nF, :fx, :Δt, :dual, :Fxminusr, :primal, :α, :η, :ρ, :δ, :in_it, :nbk],
       [Int, Int, T, Float64, T, T, T, T, T, T, T, Int, Int],
-      hdr_override = Dict(:nF => "#F", :dual => "‖∇L‖", :Fxminusr => "‖Fx - r‖", :primal => "‖c(x)‖"),
+      hdr_override = Dict(
+        :nF => "#F",
+        :dual => "‖∇L‖",
+        :Fxminusr => "‖Fx - r‖",
+        :primal => "‖c(x)‖",
+      ),
     )
     @info log_row(
       Any[
@@ -522,23 +527,25 @@ function SolverCore.solve!(
       elapsed_time = time() - start_time
       tired = sum_counters(nls) > max_f || elapsed_time > max_time || inner_iter > max_inner
 
-      verbose > 0 && mod(iter, verbose) == 0 && @info log_row(
-        Any[
-          iter,
-          sum_counters(nls),
-          fx,
-          elapsed_time,
-          normdualhat,
-          norm(primal[1:nequ]),
-          norm(primal[(nequ + 1):end]),
-          α,
-          η,
-          ρ,
-          δ,
-          inner_iter,
-          nbk,
-        ],
-      )
+      verbose > 0 &&
+        mod(iter, verbose) == 0 &&
+        @info log_row(
+          Any[
+            iter,
+            sum_counters(nls),
+            fx,
+            elapsed_time,
+            normdualhat,
+            norm(primal[1:nequ]),
+            norm(primal[(nequ + 1):end]),
+            α,
+            η,
+            ρ,
+            δ,
+            inner_iter,
+            nbk,
+          ],
+        )
     end
 
     normdual = normdualhat
@@ -562,23 +569,25 @@ function SolverCore.solve!(
     solved = first_order
     tired = sum_counters(nls) > max_f || elapsed_time > max_time || inner_iter > max_inner
 
-    verbose > 0 && mod(iter, verbose) == 0 && @info log_row(
-      Any[
-        iter,
-        sum_counters(nls),
-        fx,
-        elapsed_time,
-        normdual,
-        norm(primal[1:nequ]),
-        norm(primal[(nequ + 1):end]),
-        0.0,
-        η,
-        ρ,
-        δ,
-        inner_iter,
-        nbk,
-      ],
-    )
+    verbose > 0 &&
+      mod(iter, verbose) == 0 &&
+      @info log_row(
+        Any[
+          iter,
+          sum_counters(nls),
+          fx,
+          elapsed_time,
+          normdual,
+          norm(primal[1:nequ]),
+          norm(primal[(nequ + 1):end]),
+          0.0,
+          η,
+          ρ,
+          δ,
+          inner_iter,
+          nbk,
+        ],
+      )
     iter += 1
   end
 
