@@ -67,7 +67,7 @@ The value returned is a `GenericExecutionStats`, see `SolverCore.jl`.
 ```jldoctest
 using CaNNOLeS, ADNLPModels
 nls = ADNLSModel(x -> x, ones(3), 3)
-stats = cannoles(nls, verbose = 0)
+stats = cannoles(nls, linsolve = :ldlfactorizations, verbose = 0)
 stats
 
 # output
@@ -78,7 +78,7 @@ stats
 using CaNNOLeS, ADNLPModels
 nls = ADNLSModel(x -> x, ones(3), 3)
 solver = CaNNOLeSSolver(nls)
-stats = solve!(solver, nls, verbose = 0)
+stats = solve!(solver, nls, linsolve = :ldlfactorizations, verbose = 0)
 stats
 
 # output
