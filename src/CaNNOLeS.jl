@@ -72,7 +72,6 @@ function SolverCore.solve!(
   x::AbstractVector = nls.meta.x0,
   λ::AbstractVector = eltype(x)[],
   method::Symbol = :Newton,
-  merit::Symbol = :auglag, # :norm1, :auglag
   linsolve::Symbol = :ma57, # :ma57, :ma97, :ldlfactorizations
   max_f::Real = 100000,
   max_time::Real = 30.0,
@@ -91,7 +90,7 @@ function SolverCore.solve!(
     s *= join(["`$x`" for x in avail_mtds], ", ")
     error(s)
   end
-  merit in [:auglag] || error("Wrong merit function $merit")
+  merit = :auglag
   T = eltype(x)
   if !(linsolve in available_linsolvers)
     @warn("linsolve $linsolve not available. Using :ldlfactorizations instead")
