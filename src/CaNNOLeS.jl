@@ -397,7 +397,7 @@ function SolverCore.solve!(
 
         # on first time, μnew = μ⁺
         rhs .= [dual; primal]
-        d, ρ, ρold, nfacti = newton_system(x, r, λ, Fx, rhs, LDLT, ρold, params, method, linsolve)
+        d, ρ, ρold, nfacti = newton_system(nvar, nequ, ncon, rhs, LDLT, ρold, params, linsolve)
         nfact += nfacti
         nlinsolve += 1
 
@@ -623,15 +623,34 @@ function SolverCore.solve!(
   return stats
 end
 
-function newton_system(x, r, λ, Fx, rhs, LDLT, ρold, params, method, linsolve)
-  nvar = length(x)
-  nequ = length(r)
-  ncon = length(λ)
+"""
+    newton_system(nvar, nequ, ncon, rhs, LDLT, ρold, params, linsolve)
 
-  T = eltype(x)
+Compute an LDLt factorization of the (`nvar + nequ + ncon`)-square matrix for the Newton system contained in `LDLT` with the method `linsolve`, i.e. `sparse(LDLT.rows, LDLT.cols, LDLT.vals, N, N)`.
+If the factorization fails, a new factorization is attempted with an increased value for the regularization ρ as long as it is smaller than `params[:ρmax]`.
+The factorization is then used to solve the linear system whose right-hand side is `rhs`.
+
+# Output
+
+- `d`: the solution of the linear system;
+- `ρ`: the last value of the regularization parameter;
+- `ρold`: the old regularization value. It is equal to `ρ` if `ρ <= params[:ρmax]`;
+- `nfact`: the number of factorization attempts.
+"""
+function newton_system(
+  nvar::Integer,
+  nequ::Integer,
+  ncon::Integer,
+  rhs::AbstractVector{T},
+  LDLT::LinearSolverStruct,
+  ρold::T,
+  params::Dict{Symbol, T},
+  linsolve,
+) where {T}
+
   nfact = 0
 
-  ρ = zero(eltype(x))
+  ρ = zero(T)
 
   function try_to_factorize(LDLT)
     if linsolve == :ma57
