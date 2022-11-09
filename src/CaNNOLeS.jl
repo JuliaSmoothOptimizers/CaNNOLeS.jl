@@ -154,7 +154,7 @@ function SolverCore.solve!(
   ρmin, ρ0, ρmax = √ϵM, ϵM^T(1 / 3), min(ϵM^T(-2.0), prevfloat(T(Inf)))
   ρ = ρold = zero(T)
   δ, δmin = one(T), √ϵM
-  κdec, κinc, κlargeinc = T(1 / 3), T(8.0), min(T(100.0), T.size * 16)
+  κdec, κinc, κlargeinc = T(1 / 3), T(8.0), min(T(100.0), sizeof(T) * 16)
   eig_tol = ϵM
   params[:eig_tol] = eig_tol
   params[:δmin] = δmin
