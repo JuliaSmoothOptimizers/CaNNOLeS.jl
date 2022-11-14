@@ -397,7 +397,7 @@ function SolverCore.solve!(
 
         # on first time, μnew = μ⁺
         rhs .= [dual; primal]
-        d, ρ, ρold, nfacti = newton_system(nvar, nequ, ncon, rhs, LDLT, ρold, params, linsolve)
+        d, newton_success, ρ, ρold, nfacti = newton_system(nvar, nequ, ncon, rhs, LDLT, ρold, params, linsolve)
         nfact += nfacti
         nlinsolve += 1
 
@@ -635,6 +635,7 @@ The factorization is then used to solve the linear system whose right-hand side 
 # Output
 
 - `d`: the solution of the linear system;
+- `solve_success`: `true` if the usage of the LDLt factorization is successful;
 - `ρ`: the value of the regularization parameter used in the factorization;
 - `ρold`: the value of the regularization parameter used in the previous successful factorization, or 0 if this is the first one;
 - `nfact`: the number of factorization attempts.
@@ -689,11 +690,7 @@ function newton_system(
   success = try_to_factorize(LDLT)
   nfact += 1
 
-  vals = if linsolve == :ma57
-    LDLT.factor.vals
-  elseif linsolve == :ldlfactorizations
-    LDLT.vals
-  end
+  vals = get_vals(LDLT)
   sI = (length(vals) - nvar + 1):length(vals)
 
   if !success
@@ -715,18 +712,10 @@ function newton_system(
       ρold = ρ
     end
   end
-  d = if linsolve == :ma57
-    ma57_solve(LDLT.factor, -rhs)
-  elseif linsolve == :ldlfactorizations
-    @assert LDLT.factor != nothing
-    -(LDLT.factor \ rhs)
-    #=
-    elseif linsolve == :ma97
-    ma97_solve(LDLT, -rhs)
-    =#
-  end
 
-  return d, ρ, ρold, nfact
+  d, solve_success = solve(rhs, LDLT.factor)
+
+  return d, solve_success, ρ, ρold, nfact
 end
 
 function line_search(
