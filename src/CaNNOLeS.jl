@@ -623,18 +623,20 @@ function SolverCore.solve!(
   return stats
 end
 
+@deprecate newton_system(x, r, λ, Fx, rhs, LDLT, ρold, params, method, linsolve) newton_system(length(x), length(r), length(λ), rhs, LDLT, ρold, params, linsolve)
+
 """
     newton_system(nvar, nequ, ncon, rhs, LDLT, ρold, params, linsolve)
 
-Compute an LDLt factorization of the (`nvar + nequ + ncon`)-square matrix for the Newton system contained in `LDLT` with the method `linsolve`, i.e. `sparse(LDLT.rows, LDLT.cols, LDLT.vals, N, N)`.
+Compute an LDLt factorization of the (`nvar + nequ + ncon`)-square matrix for the Newton system contained in `LDLT`, i.e., `sparse(LDLT.rows, LDLT.cols, LDLT.vals, N, N)`, with the method `linsolve`.
 If the factorization fails, a new factorization is attempted with an increased value for the regularization ρ as long as it is smaller than `params[:ρmax]`.
 The factorization is then used to solve the linear system whose right-hand side is `rhs`.
 
 # Output
 
 - `d`: the solution of the linear system;
-- `ρ`: the last value of the regularization parameter;
-- `ρold`: the old regularization value. It is equal to `ρ` if `ρ <= params[:ρmax]`;
+- `ρ`: the value of the regularization parameter used in the factorization;
+- `ρold`: the value of the regularization parameter used in the previous successful factorization, or 0 if this is the first one;
 - `nfact`: the number of factorization attempts.
 """
 function newton_system(
