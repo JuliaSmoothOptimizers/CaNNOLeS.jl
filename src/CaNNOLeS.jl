@@ -397,7 +397,8 @@ function SolverCore.solve!(
 
         # on first time, μnew = μ⁺
         rhs .= [dual; primal]
-        d, newton_success, ρ, ρold, nfacti = newton_system(nvar, nequ, ncon, rhs, LDLT, ρold, params, linsolve)
+        d, newton_success, ρ, ρold, nfacti =
+          newton_system(nvar, nequ, ncon, rhs, LDLT, ρold, params, linsolve)
         nfact += nfacti
         nlinsolve += 1
 
@@ -623,7 +624,16 @@ function SolverCore.solve!(
   return stats
 end
 
-@deprecate newton_system(x, r, λ, Fx, rhs, LDLT, ρold, params, method, linsolve) newton_system(length(x), length(r), length(λ), rhs, LDLT, ρold, params, linsolve)
+@deprecate newton_system(x, r, λ, Fx, rhs, LDLT, ρold, params, method, linsolve) newton_system(
+  length(x),
+  length(r),
+  length(λ),
+  rhs,
+  LDLT,
+  ρold,
+  params,
+  linsolve,
+)
 
 """
     newton_system(nvar, nequ, ncon, rhs, LDLT, ρold, params, linsolve)
@@ -650,7 +660,6 @@ function newton_system(
   params::Dict{Symbol, T},
   linsolve,
 ) where {T}
-
   nfact = 0
 
   ρ = zero(T)
