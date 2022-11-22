@@ -10,6 +10,12 @@ if isdefined(HSL, :libhsl_ma57)
   function MA57Struct(N, rows, cols, vals)
     MA57Struct(ma57_coord(N, rows, cols, vals))
   end
+
+  get_vals(LDLT::MA57Struct) = LDLT.factor.vals
+  function solve(rhs::AbstractVector, factor::Ma57)
+    d = ma57_solve(factor, -rhs)
+    return d, true
+  end
 else
   function MA57Struct(N, rows, cols, vals)
     error("MA57 not installed. See HSL.jl")
@@ -25,4 +31,12 @@ end
 
 function LDLFactStruct(rows, cols, vals)
   LDLFactStruct(rows, cols, vals, nothing)
+end
+
+get_vals(LDLT::LinearSolverStruct) = LDLT.vals
+
+solve(::AbstractVector, factor::Nothing) = error("LDLt factorization failed.")
+function solve(rhs::AbstractVector, factor::LDLFactorizations.LDLFactorization)
+  d = -(factor \ rhs)
+  return d, true
 end
