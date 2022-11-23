@@ -408,6 +408,8 @@ function SolverCore.solve!(
         if ρ > params[:ρmax] || !newton_success || any(isinf.(d)) || any(isnan.(d)) || fx ≥ T(1e60) # Error on hs70
           internal_msg = if ρ > params[:ρmax]
             "ρ → ∞"
+          elseif !newton_success
+            "Failure in Newton step computation"
           elseif any(isinf.(d))
             "d → ∞"
           elseif any(isnan.(d))
