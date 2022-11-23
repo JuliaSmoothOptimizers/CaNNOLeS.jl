@@ -88,11 +88,13 @@ stats
 """
 mutable struct CaNNOLeSSolver{T, V} <: AbstractOptimizationSolver
   x::V
+  d::V
 end
 
 function CaNNOLeSSolver(nls::AbstractNLSModel{T, V}) where {T, V}
   x = similar(nls.meta.x0)
-  return CaNNOLeSSolver{T, V}(x)
+  d = zeros(T, nls.meta.nvar + nls.nls_meta.nequ + nls.meta.ncon)
+  return CaNNOLeSSolver{T, V}(x, d)
 end
 
 function SolverCore.reset!(solver::CaNNOLeSSolver)
@@ -249,8 +251,9 @@ function SolverCore.solve!(
   Jcx = ncon > 0 ? sparse(Jcx_rows, Jcx_cols, Jcx_vals, ncon, nvar) : spzeros(ncon, nvar)
 
   r = copy(Fx)
-  dx = zeros(T, nvar)
-  dr = zeros(T, nequ)
+  d = solver.d
+  dx = view(d, 1:nvar)
+  dr = view(d, nvar .+ (1:nequ))
   dλ = zeros(T, ncon)
 
   Jxtr = Jx' * r
@@ -398,11 +401,11 @@ function SolverCore.solve!(
         # on first time, μnew = μ⁺
         rhs .= [dual; primal]
         d, newton_success, ρ, ρold, nfacti =
-          newton_system(nvar, nequ, ncon, rhs, LDLT, ρold, params, linsolve)
+          newton_system!(d, nvar, nequ, ncon, rhs, LDLT, ρold, params, linsolve)
         nfact += nfacti
         nlinsolve += 1
 
-        if ρ > params[:ρmax] || any(isinf.(d)) || any(isnan.(d)) || fx ≥ T(1e60) # Error on hs70
+        if ρ > params[:ρmax] || !newton_success || any(isinf.(d)) || any(isnan.(d)) || fx ≥ T(1e60) # Error on hs70
           internal_msg = if ρ > params[:ρmax]
             "ρ → ∞"
           elseif any(isinf.(d))
@@ -413,11 +416,9 @@ function SolverCore.solve!(
             "f → ∞"
           end
           broken = true
-          continue
+          break
         end
 
-        dx .= d[1:nvar]
-        dr .= d[nvar .+ (1:nequ)]
         dλ .= -d[nvar .+ nequ .+ (1:ncon)]
       end # inner_iter != 1
       ### End of System solution
@@ -636,7 +637,7 @@ end
 )
 
 """
-    newton_system(nvar, nequ, ncon, rhs, LDLT, ρold, params, linsolve)
+    newton_system!(d, nvar, nequ, ncon, rhs, LDLT, ρold, params, linsolve)
 
 Compute an LDLt factorization of the (`nvar + nequ + ncon`)-square matrix for the Newton system contained in `LDLT`, i.e., `sparse(LDLT.rows, LDLT.cols, LDLT.vals, N, N)`, with the method `linsolve`.
 If the factorization fails, a new factorization is attempted with an increased value for the regularization ρ as long as it is smaller than `params[:ρmax]`.
@@ -650,7 +651,8 @@ The factorization is then used to solve the linear system whose right-hand side 
 - `ρold`: the value of the regularization parameter used in the previous successful factorization, or 0 if this is the first one;
 - `nfact`: the number of factorization attempts.
 """
-function newton_system(
+function newton_system!(
+  d::AbstractVector{T},
   nvar::Integer,
   nequ::Integer,
   ncon::Integer,
@@ -722,7 +724,11 @@ function newton_system(
     end
   end
 
-  d, solve_success = solve(rhs, LDLT.factor)
+  if success
+    d, solve_success = solve!(rhs, LDLT.factor, d)
+  else
+    solve_success = false
+  end
 
   return d, solve_success, ρ, ρold, nfact
 end
