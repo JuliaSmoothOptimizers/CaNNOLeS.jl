@@ -401,7 +401,7 @@ function SolverCore.solve!(
         # on first time, μnew = μ⁺
         rhs .= [dual; primal]
         d, newton_success, ρ, ρold, nfacti =
-          newton_system!(d, nvar, nequ, ncon, rhs, LDLT, ρold, params, linsolve)
+          newton_system!(d, nvar, nequ, ncon, rhs, LDLT, ρold, params)
         nfact += nfacti
         nlinsolve += 1
 
@@ -635,13 +635,12 @@ end
   LDLT,
   ρold,
   params,
-  linsolve,
 )
 
 """
-    newton_system!(d, nvar, nequ, ncon, rhs, LDLT, ρold, params, linsolve)
+    newton_system!(d, nvar, nequ, ncon, rhs, LDLT, ρold, params)
 
-Compute an LDLt factorization of the (`nvar + nequ + ncon`)-square matrix for the Newton system contained in `LDLT`, i.e., `sparse(LDLT.rows, LDLT.cols, LDLT.vals, N, N)`, with the method `linsolve`.
+Compute an LDLt factorization of the (`nvar + nequ + ncon`)-square matrix for the Newton system contained in `LDLT`, i.e., `sparse(LDLT.rows, LDLT.cols, LDLT.vals, N, N)`.
 If the factorization fails, a new factorization is attempted with an increased value for the regularization ρ as long as it is smaller than `params[:ρmax]`.
 The factorization is then used to solve the linear system whose right-hand side is `rhs`.
 
@@ -662,45 +661,12 @@ function newton_system!(
   LDLT::LinearSolverStruct,
   ρold::T,
   params::Dict{Symbol, T},
-  linsolve,
 ) where {T}
   nfact = 0
 
   ρ = zero(T)
 
-  function try_to_factorize(LDLT)
-    if linsolve == :ma57
-      ma57_factorize!(LDLT.factor)
-      success = LDLT.factor.info.info[1] == 0 && LDLT.factor.info.num_negative_eigs == nequ + ncon
-      return success
-    elseif linsolve == :ldlfactorizations
-      try
-        N = nvar + nequ + ncon
-        A = sparse(LDLT.rows, LDLT.cols, LDLT.vals, N, N)
-        A = Matrix(Symmetric(A, :L))
-        M = ldl(A)
-        D = diag(M.D)
-        pos_eig = count(D .> params[:eig_tol])
-        zer_eig = count(abs.(D) .≤ params[:eig_tol])
-        success = pos_eig == nvar && zer_eig == 0
-        LDLT.factor = M
-        return success
-      catch
-        return false
-      end
-    else
-      error("Can't handle $linsolve")
-      #=
-      elseif linsolve == :ma97
-      LDLT = Ma97(B)
-      ma97_factorize!(LDLT, matrix_type=:real_indef)
-      success = LDLT.info.flag == 0 && LDLT.info.num_neg == nequ + ncon
-      return LDLT, success
-      =#
-    end
-  end
-
-  success = try_to_factorize(LDLT)
+  success = try_to_factorize(LDLT, nvar, nequ, ncon, params[:eig_tol])
   nfact += 1
 
   vals = get_vals(LDLT)
@@ -709,14 +675,14 @@ function newton_system!(
   if !success
     ρ = ρold == 0 ? params[:ρ0] : max(params[:ρmin], params[:κdec] * ρold)
     vals[sI] .= ρ
-    success = try_to_factorize(LDLT)
+    success = try_to_factorize(LDLT, nvar, nequ, ncon, params[:eig_tol])
     nfact += 1
     ρiter = 0
     while !success && ρ <= params[:ρmax]
       ρ = ρold == 0 ? params[:κlargeinc] * ρ : params[:κinc] * ρ
       if ρ <= params[:ρmax]
         vals[sI] .= ρ
-        success = try_to_factorize(LDLT)
+        success = try_to_factorize(LDLT, nvar, nequ, ncon, params[:eig_tol])
         nfact += 1
       end
       ρiter += 1
