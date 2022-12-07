@@ -24,7 +24,13 @@ if isdefined(HSL, :libhsl_ma57)
     return d, true
   end
 
-  function try_to_factorize(LDLT::MA57Struct, nvar::Integer, nequ::Integer, ncon::Integer, eig_tol::Real)
+  function try_to_factorize(
+    LDLT::MA57Struct,
+    nvar::Integer,
+    nequ::Integer,
+    ncon::Integer,
+    eig_tol::Real,
+  )
     ma57_factorize!(LDLT.factor)
     success = LDLT.factor.info.info[1] == 0 && LDLT.factor.info.num_negative_eigs == nequ + ncon
     return success
@@ -54,7 +60,13 @@ function solve!(rhs::AbstractVector, factor::LDLFactorizations.LDLFactorization,
   return d, true
 end
 
-function try_to_factorize(LDLT::LDLFactStruct, nvar::Integer, nequ::Integer, ncon::Integer, eig_tol::Real)
+function try_to_factorize(
+  LDLT::LDLFactStruct,
+  nvar::Integer,
+  nequ::Integer,
+  ncon::Integer,
+  eig_tol::Real,
+)
   N = nvar + nequ + ncon
   A = sparse(LDLT.rows, LDLT.cols, LDLT.vals, N, N)
   A = Matrix(Symmetric(A, :L))
