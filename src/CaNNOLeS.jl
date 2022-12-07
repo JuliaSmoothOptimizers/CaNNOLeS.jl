@@ -88,13 +88,41 @@ stats
 """
 mutable struct CaNNOLeSSolver{T, V} <: AbstractOptimizationSolver
   x::V
+  cx::V
+  r::V
   d::V
+  dλ::V
+  rhs::V
+
+  xt::V
+  rt::V
+  λt::V
+  Ft::V
+  ct::V
+
+  Jxtr::V
+  dual::V
+  primal::V
 end
 
 function CaNNOLeSSolver(nls::AbstractNLSModel{T, V}) where {T, V}
   x = similar(nls.meta.x0)
+  cx = zeros(T, nls.meta.ncon)
+  r = V(undef, nls.nls_meta.nequ)
   d = zeros(T, nls.meta.nvar + nls.nls_meta.nequ + nls.meta.ncon)
-  return CaNNOLeSSolver{T, V}(x, d)
+  dλ = zeros(T, nls.meta.ncon)
+  rhs = zeros(T, nls.meta.nvar + nls.nls_meta.nequ + nls.meta.ncon)
+
+  xt = copy(x)
+  rt = V(undef, nls.nls_meta.nequ)
+  λt = V(undef, nls.meta.ncon)
+  Ft = V(undef, nls.nls_meta.nequ)
+  ct = V(undef, nls.meta.ncon)
+
+  Jxtr = V(undef, nls.meta.nvar)
+  dual = V(undef, nls.meta.nvar)
+  primal = V(undef, nls.nls_meta.nequ + nls.meta.ncon)
+  return CaNNOLeSSolver{T, V}(x, cx, r, d, dλ, rhs, xt, rt, λt, Ft, ct, Jxtr, dual, primal)
 end
 
 function SolverCore.reset!(solver::CaNNOLeSSolver)
@@ -243,20 +271,20 @@ function SolverCore.solve!(
   jac_coord_residual!(nls, x, Jx_vals)
   Jx = sparse(Jx_rows, Jx_cols, Jx_vals, nequ, nvar)
 
-  cx = zeros(T, ncon)
+  cx = solver.cx
   c!(x, cx)
   if ncon > 0
     jac_coord!(nls, x, Jcx_vals)
   end
   Jcx = ncon > 0 ? sparse(Jcx_rows, Jcx_cols, Jcx_vals, ncon, nvar) : spzeros(ncon, nvar)
 
-  r = copy(Fx)
+  r = solver.r .= Fx
   d = solver.d
   dx = view(d, 1:nvar)
   dr = view(d, nvar .+ (1:nequ))
-  dλ = zeros(T, ncon)
+  dλ = solver.dλ
 
-  Jxtr = Jx' * r
+  Jxtr = solver.Jxtr .= Jx' * r
 
   elapsed_time = 0.0
 
@@ -268,10 +296,10 @@ function SolverCore.solve!(
   end
   @debug("Starting values", x, Fx, λ)
 
-  dual = Jxtr - Jcx' * λ
-  primal = [Fx - r; cx]
+  dual = solver.dual .= Jxtr - Jcx' * λ
+  primal = solver.primal .= [Fx - r; cx]
 
-  rhs = zeros(T, nvar + nequ + ncon)
+  rhs = solver.rhs
 
   normdualhat = normdual = norm(dual, Inf)
   normprimalhat = normprimal = norm(primal, Inf)
@@ -300,9 +328,9 @@ function SolverCore.solve!(
     r .= Fx
     Jxtr = Jx' * r
     λ = T.(cgls(Jcx', Jxtr)[1]) # Armand 2012
-    dual = Jxtr - Jcx' * λ
+    dual .= Jxtr - Jcx' * λ
     normdual = norm(dual, Inf)
-    primal = [zeros(nequ); cx]
+    primal .= [zeros(nequ); cx]
     normprimal = norm(cx, Inf)
     sd = ncon > 0 ? max(smax, norm(λ, 1) / ncon) / smax : one(T)
     first_order = max(normdual / sd, normprimal) <= ϵtol
@@ -314,11 +342,7 @@ function SolverCore.solve!(
   internal_msg = ""
 
   # Trial point pre-allocation
-  xt = copy(x)
-  rt = copy(r)
-  λt = copy(λ)
-  Ft = copy(Fx)
-  ct = copy(cx)
+  xt, rt, λt, Ft, ct = solver.xt, solver.rt, solver.λt, solver.Ft, solver.ct
 
   η = one(T)
   if ncon == 0
