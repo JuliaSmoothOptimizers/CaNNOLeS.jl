@@ -86,7 +86,7 @@ stats
 "Execution stats: first-order stationary"
 ```
 """
-mutable struct CaNNOLeSSolver{T, V} <: AbstractOptimizationSolver
+mutable struct CaNNOLeSSolver{Ti, T, V} <: AbstractOptimizationSolver
   x::V
   cx::V
   r::V
@@ -103,32 +103,71 @@ mutable struct CaNNOLeSSolver{T, V} <: AbstractOptimizationSolver
   Jxtr::V
   dual::V
   primal::V
+
+  rows::Vector{Ti}
+  cols::Vector{Ti}
+  vals::V
+  hsr_rows::Vector{Ti}
+  hsr_cols::Vector{Ti}
+  Jx_rows::Vector{Ti}
+  Jx_cols::Vector{Ti}
+  Jx_vals::V
+  Jt_vals::V
+  Jcx_rows::Vector{Ti}
+  Jcx_cols::Vector{Ti}
+  Jcx_vals::V
+  Jct_vals::V
 end
 
 function CaNNOLeSSolver(nls::AbstractNLSModel{T, V}) where {T, V}
+  nvar = nls.meta.nvar
+  nequ = nls_meta(nls).nequ
+  ncon = nls.meta.ncon
+
   x = similar(nls.meta.x0)
-  cx = zeros(T, nls.meta.ncon)
-  r = V(undef, nls.nls_meta.nequ)
-  d = zeros(T, nls.meta.nvar + nls.nls_meta.nequ + nls.meta.ncon)
-  dλ = zeros(T, nls.meta.ncon)
-  rhs = zeros(T, nls.meta.nvar + nls.nls_meta.nequ + nls.meta.ncon)
+  cx = zeros(T, ncon)
+  r = V(undef, nequ)
+  d = zeros(T, nvar + nequ + ncon)
+  dλ = zeros(T, ncon)
+  rhs = zeros(T, nvar + nequ + ncon)
 
   xt = copy(x)
-  rt = V(undef, nls.nls_meta.nequ)
-  λt = V(undef, nls.meta.ncon)
-  Ft = V(undef, nls.nls_meta.nequ)
-  ct = V(undef, nls.meta.ncon)
+  rt = V(undef, nequ)
+  λt = V(undef, ncon)
+  Ft = V(undef, nequ)
+  ct = V(undef, ncon)
 
-  Jxtr = V(undef, nls.meta.nvar)
-  dual = V(undef, nls.meta.nvar)
-  primal = V(undef, nls.nls_meta.nequ + nls.meta.ncon)
-  return CaNNOLeSSolver{T, V}(x, cx, r, d, dλ, rhs, xt, rt, λt, Ft, ct, Jxtr, dual, primal)
+  Jxtr = V(undef, nvar)
+  dual = V(undef, nvar)
+  primal = V(undef, nequ + ncon)
+
+  nnzhF, nnzhc = nls.nls_meta.nnzh, ncon > 0 ? nls.meta.nnzh : 0
+  nnzjF, nnzjc = nls.nls_meta.nnzj, nls.meta.nnzj
+  nnzNS = nnzhF + nnzhc + nnzjF + nnzjc + nvar + nequ + ncon
+
+  hsr_rows, hsr_cols = hess_structure_residual(nls)
+  Ti = eltype(hsr_rows)
+  rows = Vector{Ti}(undef, nnzNS)
+  cols = Vector{Ti}(undef, nnzNS)
+  vals = V(undef, nnzNS)
+  Jx_rows, Jx_cols = jac_structure_residual(nls)
+  Jx_vals = V(undef, nls.nls_meta.nnzj)
+  Jt_vals = V(undef, nls.nls_meta.nnzj)
+  Jcx_rows, Jcx_cols = jac_structure(nls)
+  Jcx_vals = V(undef, nls.meta.nnzj)
+  Jct_vals = V(undef, nls.meta.nnzj)
+  return CaNNOLeSSolver{Ti, T, V}(x, cx, r, d, dλ, rhs, xt, rt, λt, Ft, ct, Jxtr, dual, primal, rows, cols, vals, hsr_rows, hsr_cols, Jx_rows, Jx_cols, Jx_vals, Jt_vals, Jcx_rows, Jcx_cols, Jcx_vals, Jct_vals)
 end
 
 function SolverCore.reset!(solver::CaNNOLeSSolver)
   solver
 end
-SolverCore.reset!(solver::CaNNOLeSSolver, ::AbstractNLPModel) = reset!(solver)
+function SolverCore.reset!(solver::CaNNOLeSSolver, nls::AbstractNLSModel)
+  hess_structure_residual!(nls, solver.hsr_rows, solver.hsr_cols)
+  jac_structure_residual!(nls, solver.Jx_rows, solver.Jx_cols)
+  jac_structure!(nls, solver.Jcx_rows, solver.Jcx_cols)
+  solver
+end
 
 @doc (@doc CaNNOLeSSolver) function cannoles(nls::AbstractNLSModel; kwargs...)
   if has_bounds(nls) || inequality_constrained(nls)
@@ -198,38 +237,31 @@ function SolverCore.solve!(
 
   # Allocation and structure of Newton system matrix
   # G = [Hx + ρI; Jx -I; Jcx 0 -δI]
-  nnzhF, nnzhc, nnzjF, nnzjc =
-    nls.nls_meta.nnzh, ncon > 0 ? nls.meta.nnzh : 0, nls.nls_meta.nnzj, nls.meta.nnzj
-  nnzNS = nnzhF + nnzhc + nnzjF + nnzjc + nvar + nequ + ncon
+  nnzhF, nnzhc = nls.nls_meta.nnzh, ncon > 0 ? nls.meta.nnzh : 0
+  nnzjF, nnzjc = nls.nls_meta.nnzj, nls.meta.nnzj
   # Hx
-  hsr_rows, hsr_cols = hess_structure_residual(nls)
-  Ti = eltype(hsr_rows)
-  rows = zeros(Ti, nnzNS)
-  cols = zeros(Ti, nnzNS)
-  vals = zeros(T, nnzNS)
+  rows, cols, vals = solver.rows, solver.cols, solver.vals
   sI = 1:nnzhF
-  rows[sI] .= hsr_rows
-  cols[sI] .= hsr_cols
+  rows[sI] .= solver.hsr_rows
+  cols[sI] .= solver.hsr_cols
   if ncon > 0
     sI = nnzhF .+ (1:nnzhc)
-    rows[sI], cols[sI] = hess_structure(nls)
+    rows[sI], cols[sI] = hess_structure(nls) # hess_structure!(nls, rows[sI], cols[sI])
   end
   # Jx
   sI = nnzhF + nnzhc .+ (1:nnzjF)
-  Jx_rows, Jx_cols = jac_structure_residual(nls)
+  Jx_rows, Jx_cols = solver.Jx_rows, solver.Jx_cols
   rows[sI] .= Jx_rows .+ nvar
   cols[sI] .= Jx_cols
-  Jx_vals = zeros(T, nls.nls_meta.nnzj)
-  Jt_vals = similar(Jx_vals)
+  Jx_vals, Jt_vals = solver.Jx_vals, solver.Jt_vals
   # Jcx
   local Jcx_rows, Jcx_cols, Jcx_vals, Jct_vals
   if ncon > 0
     sI = nnzhF + nnzhc + nnzjF .+ (1:nnzjc)
-    Jcx_rows, Jcx_cols = jac_structure(nls)
+    Jcx_rows, Jcx_cols = solver.Jcx_rows, solver.Jcx_cols
     rows[sI] .= Jcx_rows .+ (nvar + nequ)
     cols[sI] .= Jcx_cols
-    Jcx_vals = zeros(T, nls.meta.nnzj)
-    Jct_vals = similar(Jcx_vals)
+    Jcx_vals, Jct_vals = solver.Jcx_vals, solver.Jct_vals
   end
   # -I
   sI = nnzhF + nnzhc + nnzjF + nnzjc .+ (1:nequ)
