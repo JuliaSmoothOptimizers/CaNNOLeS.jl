@@ -123,7 +123,7 @@ end
 
 function CaNNOLeSSolver(
   nls::AbstractNLSModel{T, V};
-  linsolve::Symbol = :ma57, # :ma57, :ma97, :ldlfactorizations
+  linsolve::Symbol = :ma57,
 ) where {T, V}
   nvar = nls.meta.nvar
   nequ = nls_meta(nls).nequ
