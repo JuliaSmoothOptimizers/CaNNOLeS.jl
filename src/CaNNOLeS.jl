@@ -77,8 +77,8 @@ stats
 ```jldoctest
 using CaNNOLeS, ADNLPModels
 nls = ADNLSModel(x -> x, ones(3), 3)
-solver = CaNNOLeSSolver(nls)
-stats = solve!(solver, nls, linsolve = :ldlfactorizations, verbose = 0)
+solver = CaNNOLeSSolver(nls, linsolve = :ldlfactorizations)
+stats = solve!(solver, nls, verbose = 0)
 stats
 
 # output
