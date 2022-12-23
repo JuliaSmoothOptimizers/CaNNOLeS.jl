@@ -33,7 +33,7 @@ Implementation of a solver for Nonlinear Least Squares with nonlinear constraint
 
 For advanced usage, first define a `CaNNOLeSSolver` to preallocate the memory used in the algorithm, and then call `solve!`:
 
-    solver = CaNNOLeSSolver(nls)
+    solver = CaNNOLeSSolver(nls; linsolve = :ma57)
     solve!(solver, nls; kwargs...)
 
 or even pre-allocate the output:
@@ -86,7 +86,7 @@ stats
 "Execution stats: first-order stationary"
 ```
 """
-mutable struct CaNNOLeSSolver{Ti, T, V} <: AbstractOptimizationSolver
+mutable struct CaNNOLeSSolver{Ti, T, V, F} <: AbstractOptimizationSolver
   x::V
   cx::V
   r::V
@@ -117,9 +117,14 @@ mutable struct CaNNOLeSSolver{Ti, T, V} <: AbstractOptimizationSolver
   Jcx_cols::Vector{Ti}
   Jcx_vals::V
   Jct_vals::V
+
+  LDLT::F
 end
 
-function CaNNOLeSSolver(nls::AbstractNLSModel{T, V}) where {T, V}
+function CaNNOLeSSolver(
+  nls::AbstractNLSModel{T, V};
+  linsolve::Symbol = :ma57, # :ma57, :ma97, :ldlfactorizations
+) where {T, V}
   nvar = nls.meta.nvar
   nequ = nls_meta(nls).nequ
   ncon = nls.meta.ncon
@@ -156,7 +161,26 @@ function CaNNOLeSSolver(nls::AbstractNLSModel{T, V}) where {T, V}
   Jcx_rows, Jcx_cols = jac_structure(nls)
   Jcx_vals = V(undef, nls.meta.nnzj)
   Jct_vals = V(undef, nls.meta.nnzj)
-  return CaNNOLeSSolver{Ti, T, V}(x, cx, r, d, dλ, rhs, xt, rt, λt, Ft, ct, Jxtr, dual, primal, rows, cols, vals, hsr_rows, hsr_cols, Jx_rows, Jx_cols, Jx_vals, Jt_vals, Jcx_rows, Jcx_cols, Jcx_vals, Jct_vals)
+
+  if !(linsolve in available_linsolvers)
+    @warn("linsolve $linsolve not available. Using :ldlfactorizations instead")
+    linsolve = :ldlfactorizations
+  end
+
+  LDLT = if linsolve == :ma57
+    LDLT = MA57Struct(nvar + nequ + ncon, rows, cols, vals)
+    vals = LDLT.factor.vals
+    LDLT
+  elseif linsolve == :ldlfactorizations
+    LDLT = LDLFactStruct(rows, cols, vals)
+    vals = LDLT.vals
+    LDLT
+  else
+    error("Can't handle $linsolve")
+  end
+  F = typeof(LDLT)
+
+  return CaNNOLeSSolver{Ti, T, V, F}(x, cx, r, d, dλ, rhs, xt, rt, λt, Ft, ct, Jxtr, dual, primal, rows, cols, vals, hsr_rows, hsr_cols, Jx_rows, Jx_cols, Jx_vals, Jt_vals, Jcx_rows, Jcx_cols, Jcx_vals, Jct_vals, LDLT)
 end
 
 function SolverCore.reset!(solver::CaNNOLeSSolver)
@@ -169,14 +193,14 @@ function SolverCore.reset!(solver::CaNNOLeSSolver, nls::AbstractNLSModel)
   solver
 end
 
-@doc (@doc CaNNOLeSSolver) function cannoles(nls::AbstractNLSModel; kwargs...)
+@doc (@doc CaNNOLeSSolver) function cannoles(nls::AbstractNLSModel; linsolve::Symbol = :ma57, kwargs...)
   if has_bounds(nls) || inequality_constrained(nls)
     error("Problem has inequalities, can't solve it")
   end
   if !(nls.meta.minimize)
     error("CaNNOLeS only works for minimization problem")
   end
-  solver = CaNNOLeSSolver(nls)
+  solver = CaNNOLeSSolver(nls, linsolve = linsolve)
   return SolverCore.solve!(solver, nls; kwargs...)
 end
 
@@ -187,7 +211,6 @@ function SolverCore.solve!(
   x::AbstractVector = nls.meta.x0,
   λ::AbstractVector = eltype(x)[],
   method::Symbol = :Newton,
-  linsolve::Symbol = :ma57, # :ma57, :ma97, :ldlfactorizations
   max_f::Real = 100000,
   max_time::Real = 30.0,
   max_inner::Int = 10000,
@@ -207,10 +230,7 @@ function SolverCore.solve!(
   end
   merit = :auglag
   T = eltype(x)
-  if !(linsolve in available_linsolvers)
-    @warn("linsolve $linsolve not available. Using :ldlfactorizations instead")
-    linsolve = :ldlfactorizations
-  end
+
   ϵM = eps(T)
   nvar = nls.meta.nvar
   nequ = nls_meta(nls).nequ
@@ -276,6 +296,8 @@ function SolverCore.solve!(
   sI = nnzhF + nnzhc + nnzjF + nnzjc + nequ + ncon .+ (1:nvar)
   rows[sI], cols[sI] = 1:nvar, 1:nvar
 
+  LDLT = solver.LDLT
+
   # Shorter function definitions
   F!(x, Fx) = residual!(nls, x, Fx)
   crhs = T.(nls.meta.lcon)
@@ -335,18 +357,6 @@ function SolverCore.solve!(
 
   normdualhat = normdual = norm(dual, Inf)
   normprimalhat = normprimal = norm(primal, Inf)
-
-  LDLT = if linsolve == :ma57
-    LDLT = MA57Struct(nvar + nequ + ncon, rows, cols, vals)
-    vals = LDLT.factor.vals
-    LDLT
-  elseif linsolve == :ldlfactorizations
-    LDLT = LDLFactStruct(rows, cols, vals)
-    vals = LDLT.vals
-    LDLT
-  else
-    error("Can't handle $linsolve")
-  end
 
   smax = T(100.0)
   ϵf = ϵtol / 2 # fx = 0.5‖F(x)‖² ≤ ϵf
