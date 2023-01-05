@@ -149,8 +149,8 @@ function CaNNOLeSSolver(nls::AbstractNLSModel{T, V}; linsolve::Symbol = :ma57) w
 
   hsr_rows, hsr_cols = hess_structure_residual(nls)
   Ti = eltype(hsr_rows)
-  rows = zeros(Ti, nnzNS)
-  cols = zeros(Ti, nnzNS)
+  rows = Vector{Ti}(undef, nnzNS) # zeros(Ti, nnzNS)
+  cols = Vector{Ti}(undef, nnzNS) # zeros(Ti, nnzNS)
   vals = V(undef, nnzNS)
   Jx_rows, Jx_cols = jac_structure_residual(nls)
   Jx_vals = V(undef, nls.nls_meta.nnzj)
@@ -158,6 +158,40 @@ function CaNNOLeSSolver(nls::AbstractNLSModel{T, V}; linsolve::Symbol = :ma57) w
   Jcx_rows, Jcx_cols = jac_structure(nls)
   Jcx_vals = V(undef, nls.meta.nnzj)
   Jct_vals = V(undef, nls.meta.nnzj)
+
+  # Allocation and structure of Newton system matrix
+  # G = [Hx + ρI; Jx -I; Jcx 0 -δI]
+  # Hx
+  sI = 1:nnzhF
+  rows[sI] .= hsr_rows
+  cols[sI] .= hsr_cols
+  if ncon > 0
+    sI = nnzhF .+ (1:nnzhc)
+    rows[sI], cols[sI] = hess_structure(nls) # hess_structure!(nls, rows[sI], cols[sI])
+  end
+  # Jx
+  sI = nnzhF + nnzhc .+ (1:nnzjF)
+  rows[sI] .= Jx_rows .+ nvar
+  cols[sI] .= Jx_cols
+  # Jcx
+  # local Jcx_rows, Jcx_cols, Jcx_vals, Jct_vals
+  if ncon > 0
+    sI = nnzhF + nnzhc + nnzjF .+ (1:nnzjc)
+    rows[sI] .= Jcx_rows .+ (nvar + nequ)
+    cols[sI] .= Jcx_cols
+  end
+  # -I
+  sI = nnzhF + nnzhc + nnzjF + nnzjc .+ (1:nequ)
+  rows[sI], cols[sI], vals[sI] = (nvar + 1):(nvar + nequ), (nvar + 1):(nvar + nequ), -ones(nequ)
+  # -δI
+  if ncon > 0
+    sI = nnzhF + nnzhc + nnzjF + nnzjc + nequ .+ (1:ncon)
+    rows[sI], cols[sI] =
+      (nvar + nequ + 1):(nvar + nequ + ncon), (nvar + nequ + 1):(nvar + nequ + ncon)
+  end
+  # ρI
+  sI = nnzhF + nnzhc + nnzjF + nnzjc + nequ + ncon .+ (1:nvar)
+  rows[sI], cols[sI] = 1:nvar, 1:nvar
 
   if !(linsolve in available_linsolvers)
     @warn("linsolve $linsolve not available. Using :ldlfactorizations instead")
@@ -213,9 +247,15 @@ function SolverCore.reset!(solver::CaNNOLeSSolver)
   solver
 end
 function SolverCore.reset!(solver::CaNNOLeSSolver, nls::AbstractNLSModel)
+  ncon = nls.meta.ncon
   hess_structure_residual!(nls, solver.hsr_rows, solver.hsr_cols)
   jac_structure_residual!(nls, solver.Jx_rows, solver.Jx_cols)
   jac_structure!(nls, solver.Jcx_rows, solver.Jcx_cols)
+  if ncon > 0
+    nnzhF, nnzhc = nls.nls_meta.nnzh, ncon > 0 ? nls.meta.nnzh : 0
+    sI = nnzhF .+ (1:nnzhc)
+    solver.rows[sI], solver.cols[sI] = hess_structure(nls)
+  end
   solver
 end
 
@@ -285,47 +325,13 @@ function SolverCore.solve!(
   params[:ρmin] = ρmin
   params[:γA] = ϵM^T(1 / 4)
 
-  # Allocation and structure of Newton system matrix
-  # G = [Hx + ρI; Jx -I; Jcx 0 -δI]
   nnzhF, nnzhc = nls.nls_meta.nnzh, ncon > 0 ? nls.meta.nnzh : 0
   nnzjF, nnzjc = nls.nls_meta.nnzj, nls.meta.nnzj
-  # Hx
-  rows, cols, vals = solver.rows, solver.cols, solver.vals
-  sI = 1:nnzhF
-  rows[sI] .= solver.hsr_rows
-  cols[sI] .= solver.hsr_cols
-  if ncon > 0
-    sI = nnzhF .+ (1:nnzhc)
-    rows[sI], cols[sI] = hess_structure(nls) # hess_structure!(nls, rows[sI], cols[sI])
-  end
-  # Jx
-  sI = nnzhF + nnzhc .+ (1:nnzjF)
   Jx_rows, Jx_cols = solver.Jx_rows, solver.Jx_cols
-  rows[sI] .= Jx_rows .+ nvar
-  cols[sI] .= Jx_cols
   Jx_vals, Jt_vals = solver.Jx_vals, solver.Jt_vals
-  # Jcx
-  local Jcx_rows, Jcx_cols, Jcx_vals, Jct_vals
-  if ncon > 0
-    sI = nnzhF + nnzhc + nnzjF .+ (1:nnzjc)
-    Jcx_rows, Jcx_cols = solver.Jcx_rows, solver.Jcx_cols
-    rows[sI] .= Jcx_rows .+ (nvar + nequ)
-    cols[sI] .= Jcx_cols
-    Jcx_vals, Jct_vals = solver.Jcx_vals, solver.Jct_vals
-  end
-  # -I
-  sI = nnzhF + nnzhc + nnzjF + nnzjc .+ (1:nequ)
-  rows[sI], cols[sI], vals[sI] = (nvar + 1):(nvar + nequ), (nvar + 1):(nvar + nequ), -ones(nequ)
-  # -δI
-  if ncon > 0
-    sI = nnzhF + nnzhc + nnzjF + nnzjc + nequ .+ (1:ncon)
-    rows[sI], cols[sI] =
-      (nvar + nequ + 1):(nvar + nequ + ncon), (nvar + nequ + 1):(nvar + nequ + ncon)
-  end
-  # ρI
-  sI = nnzhF + nnzhc + nnzjF + nnzjc + nequ + ncon .+ (1:nvar)
-  rows[sI], cols[sI] = 1:nvar, 1:nvar
-
+  Jcx_rows, Jcx_cols = solver.Jcx_rows, solver.Jcx_cols
+  Jcx_vals, Jct_vals = solver.Jcx_vals, solver.Jct_vals
+  vals = solver.vals
   LDLT = solver.LDLT
 
   # Shorter function definitions
