@@ -149,8 +149,8 @@ function CaNNOLeSSolver(nls::AbstractNLSModel{T, V}; linsolve::Symbol = :ma57) w
 
   hsr_rows, hsr_cols = hess_structure_residual(nls)
   Ti = eltype(hsr_rows)
-  rows = Vector{Ti}(undef, nnzNS) # zeros(Ti, nnzNS)
-  cols = Vector{Ti}(undef, nnzNS) # zeros(Ti, nnzNS)
+  rows = Vector{Ti}(undef, nnzNS)
+  cols = Vector{Ti}(undef, nnzNS)
   vals = V(undef, nnzNS)
   Jx_rows, Jx_cols = jac_structure_residual(nls)
   Jx_vals = V(undef, nls.nls_meta.nnzj)
@@ -167,14 +167,13 @@ function CaNNOLeSSolver(nls::AbstractNLSModel{T, V}; linsolve::Symbol = :ma57) w
   cols[sI] .= hsr_cols
   if ncon > 0
     sI = nnzhF .+ (1:nnzhc)
-    rows[sI], cols[sI] = hess_structure(nls) # hess_structure!(nls, rows[sI], cols[sI])
+    rows[sI], cols[sI] = hess_structure(nls)
   end
   # Jx
   sI = nnzhF + nnzhc .+ (1:nnzjF)
   rows[sI] .= Jx_rows .+ nvar
   cols[sI] .= Jx_cols
   # Jcx
-  # local Jcx_rows, Jcx_cols, Jcx_vals, Jct_vals
   if ncon > 0
     sI = nnzhF + nnzhc + nnzjF .+ (1:nnzjc)
     rows[sI] .= Jcx_rows .+ (nvar + nequ)
@@ -182,7 +181,8 @@ function CaNNOLeSSolver(nls::AbstractNLSModel{T, V}; linsolve::Symbol = :ma57) w
   end
   # -I
   sI = nnzhF + nnzhc + nnzjF + nnzjc .+ (1:nequ)
-  rows[sI], cols[sI], vals[sI] = (nvar + 1):(nvar + nequ), (nvar + 1):(nvar + nequ), -ones(nequ)
+  rows[sI], cols[sI] = (nvar + 1):(nvar + nequ), (nvar + 1):(nvar + nequ)
+  vals[sI] .= -one(T)
   # -δI
   if ncon > 0
     sI = nnzhF + nnzhc + nnzjF + nnzjc + nequ .+ (1:ncon)
