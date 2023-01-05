@@ -121,10 +121,7 @@ mutable struct CaNNOLeSSolver{Ti, T, V, F} <: AbstractOptimizationSolver
   LDLT::F
 end
 
-function CaNNOLeSSolver(
-  nls::AbstractNLSModel{T, V};
-  linsolve::Symbol = :ma57,
-) where {T, V}
+function CaNNOLeSSolver(nls::AbstractNLSModel{T, V}; linsolve::Symbol = :ma57) where {T, V}
   nvar = nls.meta.nvar
   nequ = nls_meta(nls).nequ
   ncon = nls.meta.ncon
@@ -152,8 +149,8 @@ function CaNNOLeSSolver(
 
   hsr_rows, hsr_cols = hess_structure_residual(nls)
   Ti = eltype(hsr_rows)
-  rows = Vector{Ti}(undef, nnzNS)
-  cols = Vector{Ti}(undef, nnzNS)
+  rows = zeros(Ti, nnzNS)
+  cols = zeros(Ti, nnzNS)
   vals = V(undef, nnzNS)
   Jx_rows, Jx_cols = jac_structure_residual(nls)
   Jx_vals = V(undef, nls.nls_meta.nnzj)
@@ -180,7 +177,36 @@ function CaNNOLeSSolver(
   end
   F = typeof(LDLT)
 
-  return CaNNOLeSSolver{Ti, T, V, F}(x, cx, r, d, dλ, rhs, xt, rt, λt, Ft, ct, Jxtr, dual, primal, rows, cols, vals, hsr_rows, hsr_cols, Jx_rows, Jx_cols, Jx_vals, Jt_vals, Jcx_rows, Jcx_cols, Jcx_vals, Jct_vals, LDLT)
+  return CaNNOLeSSolver{Ti, T, V, F}(
+    x,
+    cx,
+    r,
+    d,
+    dλ,
+    rhs,
+    xt,
+    rt,
+    λt,
+    Ft,
+    ct,
+    Jxtr,
+    dual,
+    primal,
+    rows,
+    cols,
+    vals,
+    hsr_rows,
+    hsr_cols,
+    Jx_rows,
+    Jx_cols,
+    Jx_vals,
+    Jt_vals,
+    Jcx_rows,
+    Jcx_cols,
+    Jcx_vals,
+    Jct_vals,
+    LDLT,
+  )
 end
 
 function SolverCore.reset!(solver::CaNNOLeSSolver)
@@ -193,7 +219,11 @@ function SolverCore.reset!(solver::CaNNOLeSSolver, nls::AbstractNLSModel)
   solver
 end
 
-@doc (@doc CaNNOLeSSolver) function cannoles(nls::AbstractNLSModel; linsolve::Symbol = :ma57, kwargs...)
+@doc (@doc CaNNOLeSSolver) function cannoles(
+  nls::AbstractNLSModel;
+  linsolve::Symbol = :ma57,
+  kwargs...,
+)
   if has_bounds(nls) || inequality_constrained(nls)
     error("Problem has inequalities, can't solve it")
   end
