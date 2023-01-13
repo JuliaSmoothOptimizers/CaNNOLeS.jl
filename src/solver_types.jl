@@ -19,7 +19,7 @@ if isdefined(HSL, :libhsl_ma57)
   end
 
   get_vals(LDLT::MA57Struct) = LDLT.factor.vals
-  function solve!(rhs::AbstractVector, factor::Ma57, d::AbstractVector)
+  function solve_ldl!(rhs::AbstractVector, factor::Ma57, d::AbstractVector)
     d .= ma57_solve(factor, -rhs)
     return d, true
   end
@@ -54,8 +54,8 @@ end
 
 get_vals(LDLT::LinearSolverStruct) = LDLT.vals
 
-solve!(::AbstractVector, factor::Nothing, ::AbstractVector) = error("LDLt factorization failed.")
-function solve!(rhs::AbstractVector, factor::LDLFactorizations.LDLFactorization, d::AbstractVector)
+solve_ldl!(::AbstractVector, factor::Nothing, ::AbstractVector) = error("LDLt factorization failed.")
+function solve_ldl!(rhs::AbstractVector, factor::LDLFactorizations.LDLFactorization, d::AbstractVector)
   d .= -(factor \ rhs)
   return d, true
 end

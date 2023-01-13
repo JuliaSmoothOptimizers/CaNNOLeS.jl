@@ -33,7 +33,7 @@ Implementation of a solver for Nonlinear Least Squares with nonlinear constraint
 
 For advanced usage, first define a `CaNNOLeSSolver` to preallocate the memory used in the algorithm, and then call `solve!`:
 
-    solver = CaNNOLeSSolver(nls)
+    solver = CaNNOLeSSolver(nls; linsolve = :ma57)
     solve!(solver, nls; kwargs...)
 
 or even pre-allocate the output:
@@ -77,8 +77,8 @@ stats
 ```jldoctest
 using CaNNOLeS, ADNLPModels
 nls = ADNLSModel(x -> x, ones(3), 3)
-solver = CaNNOLeSSolver(nls)
-stats = solve!(solver, nls, linsolve = :ldlfactorizations, verbose = 0)
+solver = CaNNOLeSSolver(nls, linsolve = :ldlfactorizations)
+stats = solve!(solver, nls, verbose = 0)
 stats
 
 # output
@@ -86,7 +86,7 @@ stats
 "Execution stats: first-order stationary"
 ```
 """
-mutable struct CaNNOLeSSolver{Ti, T, V} <: AbstractOptimizationSolver
+mutable struct CaNNOLeSSolver{Ti, T, V, F} <: AbstractOptimizationSolver
   x::V
   cx::V
   r::V
@@ -117,9 +117,11 @@ mutable struct CaNNOLeSSolver{Ti, T, V} <: AbstractOptimizationSolver
   Jcx_cols::Vector{Ti}
   Jcx_vals::V
   Jct_vals::V
+
+  LDLT::F
 end
 
-function CaNNOLeSSolver(nls::AbstractNLSModel{T, V}) where {T, V}
+function CaNNOLeSSolver(nls::AbstractNLSModel{T, V}; linsolve::Symbol = :ma57) where {T, V}
   nvar = nls.meta.nvar
   nequ = nls_meta(nls).nequ
   ncon = nls.meta.ncon
@@ -156,27 +158,119 @@ function CaNNOLeSSolver(nls::AbstractNLSModel{T, V}) where {T, V}
   Jcx_rows, Jcx_cols = jac_structure(nls)
   Jcx_vals = V(undef, nls.meta.nnzj)
   Jct_vals = V(undef, nls.meta.nnzj)
-  return CaNNOLeSSolver{Ti, T, V}(x, cx, r, d, dλ, rhs, xt, rt, λt, Ft, ct, Jxtr, dual, primal, rows, cols, vals, hsr_rows, hsr_cols, Jx_rows, Jx_cols, Jx_vals, Jt_vals, Jcx_rows, Jcx_cols, Jcx_vals, Jct_vals)
+
+  # Allocation and structure of Newton system matrix
+  # G = [Hx + ρI; Jx -I; Jcx 0 -δI]
+  # Hx
+  sI = 1:nnzhF
+  rows[sI] .= hsr_rows
+  cols[sI] .= hsr_cols
+  if ncon > 0
+    sI = nnzhF .+ (1:nnzhc)
+    rows[sI], cols[sI] = hess_structure(nls)
+  end
+  # Jx
+  sI = nnzhF + nnzhc .+ (1:nnzjF)
+  rows[sI] .= Jx_rows .+ nvar
+  cols[sI] .= Jx_cols
+  # Jcx
+  if ncon > 0
+    sI = nnzhF + nnzhc + nnzjF .+ (1:nnzjc)
+    rows[sI] .= Jcx_rows .+ (nvar + nequ)
+    cols[sI] .= Jcx_cols
+  end
+  # -I
+  sI = nnzhF + nnzhc + nnzjF + nnzjc .+ (1:nequ)
+  rows[sI], cols[sI] = (nvar + 1):(nvar + nequ), (nvar + 1):(nvar + nequ)
+  vals[sI] .= -one(T)
+  # -δI
+  if ncon > 0
+    sI = nnzhF + nnzhc + nnzjF + nnzjc + nequ .+ (1:ncon)
+    rows[sI], cols[sI] =
+      (nvar + nequ + 1):(nvar + nequ + ncon), (nvar + nequ + 1):(nvar + nequ + ncon)
+  end
+  # ρI
+  sI = nnzhF + nnzhc + nnzjF + nnzjc + nequ + ncon .+ (1:nvar)
+  rows[sI], cols[sI] = 1:nvar, 1:nvar
+
+  if !(linsolve in available_linsolvers)
+    @warn("linsolve $linsolve not available. Using :ldlfactorizations instead")
+    linsolve = :ldlfactorizations
+  end
+
+  LDLT = if linsolve == :ma57
+    LDLT = MA57Struct(nvar + nequ + ncon, rows, cols, vals)
+    vals = LDLT.factor.vals
+    LDLT
+  elseif linsolve == :ldlfactorizations
+    LDLT = LDLFactStruct(rows, cols, vals)
+    vals = LDLT.vals
+    LDLT
+  else
+    error("Can't handle $linsolve")
+  end
+  F = typeof(LDLT)
+
+  return CaNNOLeSSolver{Ti, T, V, F}(
+    x,
+    cx,
+    r,
+    d,
+    dλ,
+    rhs,
+    xt,
+    rt,
+    λt,
+    Ft,
+    ct,
+    Jxtr,
+    dual,
+    primal,
+    rows,
+    cols,
+    vals,
+    hsr_rows,
+    hsr_cols,
+    Jx_rows,
+    Jx_cols,
+    Jx_vals,
+    Jt_vals,
+    Jcx_rows,
+    Jcx_cols,
+    Jcx_vals,
+    Jct_vals,
+    LDLT,
+  )
 end
 
 function SolverCore.reset!(solver::CaNNOLeSSolver)
   solver
 end
 function SolverCore.reset!(solver::CaNNOLeSSolver, nls::AbstractNLSModel)
+  ncon = nls.meta.ncon
   hess_structure_residual!(nls, solver.hsr_rows, solver.hsr_cols)
   jac_structure_residual!(nls, solver.Jx_rows, solver.Jx_cols)
   jac_structure!(nls, solver.Jcx_rows, solver.Jcx_cols)
+  if ncon > 0
+    nnzhF, nnzhc = nls.nls_meta.nnzh, ncon > 0 ? nls.meta.nnzh : 0
+    sI = nnzhF .+ (1:nnzhc)
+    solver.rows[sI], solver.cols[sI] = hess_structure(nls)
+  end
   solver
 end
 
-@doc (@doc CaNNOLeSSolver) function cannoles(nls::AbstractNLSModel; kwargs...)
+@doc (@doc CaNNOLeSSolver) function cannoles(
+  nls::AbstractNLSModel;
+  linsolve::Symbol = :ma57,
+  kwargs...,
+)
   if has_bounds(nls) || inequality_constrained(nls)
     error("Problem has inequalities, can't solve it")
   end
   if !(nls.meta.minimize)
     error("CaNNOLeS only works for minimization problem")
   end
-  solver = CaNNOLeSSolver(nls)
+  solver = CaNNOLeSSolver(nls, linsolve = linsolve)
   return SolverCore.solve!(solver, nls; kwargs...)
 end
 
@@ -187,7 +281,6 @@ function SolverCore.solve!(
   x::AbstractVector = nls.meta.x0,
   λ::AbstractVector = eltype(x)[],
   method::Symbol = :Newton,
-  linsolve::Symbol = :ma57, # :ma57, :ma97, :ldlfactorizations
   max_f::Real = 100000,
   max_time::Real = 30.0,
   max_inner::Int = 10000,
@@ -207,10 +300,7 @@ function SolverCore.solve!(
   end
   merit = :auglag
   T = eltype(x)
-  if !(linsolve in available_linsolvers)
-    @warn("linsolve $linsolve not available. Using :ldlfactorizations instead")
-    linsolve = :ldlfactorizations
-  end
+
   ϵM = eps(T)
   nvar = nls.meta.nvar
   nequ = nls_meta(nls).nequ
@@ -235,46 +325,14 @@ function SolverCore.solve!(
   params[:ρmin] = ρmin
   params[:γA] = ϵM^T(1 / 4)
 
-  # Allocation and structure of Newton system matrix
-  # G = [Hx + ρI; Jx -I; Jcx 0 -δI]
   nnzhF, nnzhc = nls.nls_meta.nnzh, ncon > 0 ? nls.meta.nnzh : 0
   nnzjF, nnzjc = nls.nls_meta.nnzj, nls.meta.nnzj
-  # Hx
-  rows, cols, vals = solver.rows, solver.cols, solver.vals
-  sI = 1:nnzhF
-  rows[sI] .= solver.hsr_rows
-  cols[sI] .= solver.hsr_cols
-  if ncon > 0
-    sI = nnzhF .+ (1:nnzhc)
-    rows[sI], cols[sI] = hess_structure(nls) # hess_structure!(nls, rows[sI], cols[sI])
-  end
-  # Jx
-  sI = nnzhF + nnzhc .+ (1:nnzjF)
   Jx_rows, Jx_cols = solver.Jx_rows, solver.Jx_cols
-  rows[sI] .= Jx_rows .+ nvar
-  cols[sI] .= Jx_cols
   Jx_vals, Jt_vals = solver.Jx_vals, solver.Jt_vals
-  # Jcx
-  local Jcx_rows, Jcx_cols, Jcx_vals, Jct_vals
-  if ncon > 0
-    sI = nnzhF + nnzhc + nnzjF .+ (1:nnzjc)
-    Jcx_rows, Jcx_cols = solver.Jcx_rows, solver.Jcx_cols
-    rows[sI] .= Jcx_rows .+ (nvar + nequ)
-    cols[sI] .= Jcx_cols
-    Jcx_vals, Jct_vals = solver.Jcx_vals, solver.Jct_vals
-  end
-  # -I
-  sI = nnzhF + nnzhc + nnzjF + nnzjc .+ (1:nequ)
-  rows[sI], cols[sI], vals[sI] = (nvar + 1):(nvar + nequ), (nvar + 1):(nvar + nequ), -ones(nequ)
-  # -δI
-  if ncon > 0
-    sI = nnzhF + nnzhc + nnzjF + nnzjc + nequ .+ (1:ncon)
-    rows[sI], cols[sI] =
-      (nvar + nequ + 1):(nvar + nequ + ncon), (nvar + nequ + 1):(nvar + nequ + ncon)
-  end
-  # ρI
-  sI = nnzhF + nnzhc + nnzjF + nnzjc + nequ + ncon .+ (1:nvar)
-  rows[sI], cols[sI] = 1:nvar, 1:nvar
+  Jcx_rows, Jcx_cols = solver.Jcx_rows, solver.Jcx_cols
+  Jcx_vals, Jct_vals = solver.Jcx_vals, solver.Jct_vals
+  vals = solver.vals
+  LDLT = solver.LDLT
 
   # Shorter function definitions
   F!(x, Fx) = residual!(nls, x, Fx)
@@ -335,18 +393,6 @@ function SolverCore.solve!(
 
   normdualhat = normdual = norm(dual, Inf)
   normprimalhat = normprimal = norm(primal, Inf)
-
-  LDLT = if linsolve == :ma57
-    LDLT = MA57Struct(nvar + nequ + ncon, rows, cols, vals)
-    vals = LDLT.factor.vals
-    LDLT
-  elseif linsolve == :ldlfactorizations
-    LDLT = LDLFactStruct(rows, cols, vals)
-    vals = LDLT.vals
-    LDLT
-  else
-    error("Can't handle $linsolve")
-  end
 
   smax = T(100.0)
   ϵf = ϵtol / 2 # fx = 0.5‖F(x)‖² ≤ ϵf
@@ -749,7 +795,7 @@ function newton_system!(
   end
 
   if success
-    d, solve_success = solve!(rhs, LDLT.factor, d)
+    d, solve_success = solve_ldl!(rhs, LDLT.factor, d)
   else
     solve_success = false
   end
