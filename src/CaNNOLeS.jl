@@ -795,7 +795,7 @@ function newton_system!(
   end
 
   if success
-    d, solve_success = solve!(rhs, LDLT.factor, d)
+    d, solve_success = solve_ldl!(rhs, LDLT.factor, d)
   else
     solve_success = false
   end
