@@ -63,6 +63,22 @@ The algorithm stops when ``‖c(xᵏ)‖∞ ≤ ϵtol`` and ``‖∇F(xᵏ)ᵀF(
 # Output
 The value returned is a `GenericExecutionStats`, see `SolverCore.jl`.
 
+# Callback
+The callback is called at each iteration.
+The expected signature of the callback is `callback(nls, solver, stats)`, and its output is ignored.
+Changing any of the input arguments will affect the subsequent iterations.
+In particular, setting `stats.status = :user` will stop the algorithm.
+All relevant information should be available in `nlp` and `solver`.
+Notably, you can access, and modify, the following:
+- `solver.x`: current iterate;
+- `solver.gx`: current gradient;
+- `stats`: structure holding the output of the algorithm (`GenericExecutionStats`), which contains, among other things:
+  - `stats.dual_feas`: norm of current gradient;
+  - `stats.iter`: current iteration counter;
+  - `stats.objective`: current objective function value;
+  - `stats.status`: current status of the algorithm. Should be `:unknown` unless the algorithm has attained a stopping criterion. Changing this to anything will stop the algorithm, but you should use `:user` to properly indicate the intention.
+  - `stats.elapsed_time`: elapsed time in seconds.
+
 # Examples
 ```jldoctest
 using CaNNOLeS, ADNLPModels
@@ -278,6 +294,7 @@ function SolverCore.solve!(
   solver::CaNNOLeSSolver,
   nls::AbstractNLSModel,
   stats::GenericExecutionStats;
+  callback = (args...) -> nothing,
   x::AbstractVector = nls.meta.x0,
   λ::AbstractVector = eltype(x)[],
   method::Symbol = :Newton,
@@ -426,7 +443,7 @@ function SolverCore.solve!(
   if ncon == 0
     η = zero(T)
   end
-  iter = 1
+  set_iter!(stats, 0)
   inner_iter = 0
   nbk = nfact = nlinsolve = 0
 
@@ -456,7 +473,9 @@ function SolverCore.solve!(
     )
   end
 
-  while !(solved || tired || broken)
+  callback(nls, solver, stats)
+
+  while !(solved || tired || broken || (stats.status == :user))
     # |G(w) - μe|
     combined_optimality = normdual + normprimal
     δ = max(δmin, min(δdec * δ, combined_optimality))
@@ -634,10 +653,10 @@ function SolverCore.solve!(
       tired = sum_counters(nls) > max_f || elapsed_time > max_time || inner_iter > max_inner
 
       verbose > 0 &&
-        mod(iter, verbose) == 0 &&
+        mod(stats.iter, verbose) == 0 &&
         @info log_row(
           Any[
-            iter,
+            stats.iter,
             sum_counters(nls),
             fx,
             elapsed_time,
@@ -676,10 +695,10 @@ function SolverCore.solve!(
     tired = sum_counters(nls) > max_f || elapsed_time > max_time || inner_iter > max_inner
 
     verbose > 0 &&
-      mod(iter, verbose) == 0 &&
+      mod(stats.iter, verbose) == 0 &&
       @info log_row(
         Any[
-          iter,
+          stats.iter,
           sum_counters(nls),
           fx,
           elapsed_time,
@@ -694,7 +713,9 @@ function SolverCore.solve!(
           nbk,
         ],
       )
-    iter += 1
+    set_iter!(stats, stats.iter + 1)
+
+    callback(nls, solver, stats)
   end
 
   status = if first_order
@@ -719,7 +740,6 @@ function SolverCore.solve!(
   set_solution!(stats, x)
   set_objective!(stats, dot(Fx, Fx) / 2)
   set_residuals!(stats, norm(primal[(nequ + 1):end]), normdual)
-  set_iter!(stats, iter)
   set_time!(stats, elapsed_time)
   set_constraint_multipliers!(stats, λ)
   set_solver_specific!(stats, :nbk, nbk)
