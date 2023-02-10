@@ -19,6 +19,24 @@ nls = ADNLSModel(x -> x, zeros(5), 5, zeros(5), ones(5))
 nls = DummyModel(NLPModelMeta(1, minimize = false))
 @test_throws ErrorException("CaNNOLeS only works for minimization problem") cannoles(nls)
 
+@testset "Test callback" begin
+  nls = ADNLSModel(
+    x -> [x[1] - 1; 10 * (x[2] - x[1]^2)],
+    [-1.2; 1.0],
+    2,
+    x -> [x[1] * x[2] - 1],
+    [0.0],
+    [0.0],
+  )
+  function cb(nls, solver, stats)
+    if stats.iter == 4
+      stats.status = :user
+    end
+  end
+  stats = cannoles(nls, callback = cb)
+  @test stats.iter == 4
+end
+
 function cannoles_tests()
   F_linear(x) = [x[1] - 2; x[2] - 3]
   F_Rosen(x) = [x[1] - 1; 10 * (x[2] - x[1]^2)]
@@ -88,14 +106,14 @@ end
   )
   stats = GenericExecutionStats(nls)
   solver = CaNNOLeSSolver(nls)
-  stats = solve!(solver, nls, stats)
+  stats = solve!(solver, nls, stats, check_small_residual = false)
   @test stats.status_reliable && stats.status == :first_order
   @test stats.solution_reliable && isapprox(stats.solution, [1.0; 1.0], atol = 1e-6)
 
   nls.meta.x0 .= 10.0
   reset!(solver)
 
-  stats = solve!(solver, nls, stats)
+  stats = solve!(solver, nls, stats, check_small_residual = false)
   @test stats.status_reliable && stats.status == :first_order
   @test stats.solution_reliable && isapprox(stats.solution, [1.0; 1.0], atol = 1e-6)
 end
@@ -112,7 +130,7 @@ end
   )
   stats = GenericExecutionStats(nls)
   solver = CaNNOLeSSolver(nls)
-  stats = solve!(solver, nls, stats)
+  stats = solve!(solver, nls, stats, check_small_residual = false)
   @test stats.status_reliable && stats.status == :first_order
   @test stats.solution_reliable && isapprox(stats.solution, [1.0; 1.0], atol = 1e-6)
 
@@ -127,7 +145,7 @@ end
   )
   reset!(solver, nlp)
 
-  stats = solve!(solver, nlp, stats)
+  stats = solve!(solver, nlp, stats, check_small_residual = false)
   @test stats.status_reliable && stats.status == :first_order
   @test stats.solution_reliable && isapprox(stats.solution, [0.0; 0.0], atol = 1e-6)
 end

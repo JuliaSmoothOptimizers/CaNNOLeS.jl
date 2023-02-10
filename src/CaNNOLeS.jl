@@ -22,6 +22,8 @@ export cannoles, CaNNOLeSSolver, solve!
 
 include("solver_types.jl")
 
+SolverCore.eval_fun(nls::AbstractNLSModel) = sum_counters(nls)
+
 """
     cannoles(nls)
 
@@ -71,9 +73,12 @@ In particular, setting `stats.status = :user` will stop the algorithm.
 All relevant information should be available in `nlp` and `solver`.
 Notably, you can access, and modify, the following:
 - `solver.x`: current iterate;
-- `solver.gx`: current gradient;
+- `solver.cx`: current value of the constraints at `x`;
 - `stats`: structure holding the output of the algorithm (`GenericExecutionStats`), which contains, among other things:
-  - `stats.dual_feas`: norm of current gradient;
+  - `stats.solution`: current iterate;
+  - `stats.multipliers`: current Lagrange multipliers wrt to the constraints;
+  - `stats.primal_feas`:the primal feasibility norm at `solution`;
+  - `stats.dual_feas`: the dual feasibility norm at `solution`;
   - `stats.iter`: current iteration counter;
   - `stats.objective`: current objective function value;
   - `stats.status`: current status of the algorithm. Should be `:unknown` unless the algorithm has attained a stopping criterion. Changing this to anything will stop the algorithm, but you should use `:user` to properly indicate the intention.
@@ -449,6 +454,19 @@ function SolverCore.solve!(
 
   ϵk = 1e3
 
+  status = SolverCore.get_status(
+    nls;
+    elapsed_time = elapsed_time,
+    iter = inner_iter,
+    optimal = first_order,
+    small_residual = small_residual,
+    exception = broken,
+    max_eval = max_f,
+    max_time = max_time,
+    max_iter = max_inner,
+  )
+  set_status!(stats, status)
+
   if verbose > 0
     @info log_header(
       [:I, :nF, :fx, :Δt, :dual, :Fxminusr, :primal, :α, :η, :ρ, :δ, :in_it, :nbk],
@@ -473,9 +491,15 @@ function SolverCore.solve!(
     )
   end
 
+  set_objective!(stats, dot(Fx, Fx) / 2)
+  set_residuals!(stats, norm(primal[(nequ + 1):end]), normdual)
+  set_solution!(stats, x)
+  set_constraint_multipliers!(stats, λ)
   callback(nls, solver, stats)
 
-  while !(solved || tired || broken || (stats.status == :user))
+  done = stats.status != :unknown
+
+  while !done
     # |G(w) - μe|
     combined_optimality = normdual + normprimal
     δ = max(δmin, min(δdec * δ, combined_optimality))
@@ -714,34 +738,29 @@ function SolverCore.solve!(
         ],
       )
     set_iter!(stats, stats.iter + 1)
+    set_time!(stats, elapsed_time)
+    status = SolverCore.get_status(
+      nls;
+      elapsed_time = elapsed_time,
+      iter = inner_iter,
+      optimal = first_order,
+      small_residual = small_residual,
+      exception = broken,
+      max_eval = max_f,
+      max_time = max_time,
+      max_iter = max_inner,
+    )
+    set_status!(stats, status)
 
+    set_objective!(stats, dot(Fx, Fx) / 2)
+    set_residuals!(stats, norm(primal[(nequ + 1):end]), normdual)
+    set_constraint_multipliers!(stats, λ)
+    set_solution!(stats, x)
     callback(nls, solver, stats)
+
+    done = stats.status != :unknown
   end
 
-  status = if first_order
-    :first_order
-    #elseif small_residual
-    #  :small_residual
-  elseif tired
-    if sum_counters(nls) > max_f
-      :max_eval
-    elseif elapsed_time > max_time
-      :max_time
-    else
-      :max_iter
-    end
-  elseif broken
-    :exception
-  end
-
-  elapsed_time = time() - start_time
-
-  set_status!(stats, status)
-  set_solution!(stats, x)
-  set_objective!(stats, dot(Fx, Fx) / 2)
-  set_residuals!(stats, norm(primal[(nequ + 1):end]), normdual)
-  set_time!(stats, elapsed_time)
-  set_constraint_multipliers!(stats, λ)
   set_solver_specific!(stats, :nbk, nbk)
   set_solver_specific!(stats, :nfact, nfact)
   set_solver_specific!(stats, :nlinsolve, nlinsolve)
