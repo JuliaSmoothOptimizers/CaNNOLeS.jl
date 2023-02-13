@@ -56,7 +56,7 @@ or even pre-allocate the output:
 - `max_inner::Int = 10000`: maximum number of inner iterations;
 - `ϵtol::Real = √eps(eltype(x))`: stopping tolerance;
 - `verbose::Int = 0`: if > 0, display iteration details every `verbose` iteration;
-- `check_small_residual::Bool = true`: if `true`, stop whenever ``‖F(x)‖₂² ≤ ϵtol`` and ``‖c(xᵏ)‖∞ ≤ √ϵtol``;
+- `check_small_residual::Bool = false`: if `true`, stop whenever ``‖F(x)‖₂² ≤ ϵtol`` and ``‖c(xᵏ)‖∞ ≤ √ϵtol``;
 - `always_accept_extrapolation::Bool = false`: if `true`, run even if the extrapolation step fails;
 - `δdec::Real = eltype(x)(0.1)`: reducing factor on the parameter `δ`.
 
@@ -308,7 +308,7 @@ function SolverCore.solve!(
   max_inner::Int = 10000,
   ϵtol::Real = √eps(eltype(x)),
   verbose::Integer = 0,
-  check_small_residual::Bool = true,
+  check_small_residual::Bool = false,
   always_accept_extrapolation::Bool = false,
   δdec::Real = eltype(x)(0.1),
 )

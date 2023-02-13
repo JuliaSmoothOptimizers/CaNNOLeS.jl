@@ -106,14 +106,14 @@ end
   )
   stats = GenericExecutionStats(nls)
   solver = CaNNOLeSSolver(nls)
-  stats = solve!(solver, nls, stats, check_small_residual = false)
+  stats = solve!(solver, nls, stats)
   @test stats.status_reliable && stats.status == :first_order
   @test stats.solution_reliable && isapprox(stats.solution, [1.0; 1.0], atol = 1e-6)
 
   nls.meta.x0 .= 10.0
   reset!(solver)
 
-  stats = solve!(solver, nls, stats, check_small_residual = false)
+  stats = solve!(solver, nls, stats)
   @test stats.status_reliable && stats.status == :first_order
   @test stats.solution_reliable && isapprox(stats.solution, [1.0; 1.0], atol = 1e-6)
 end
@@ -130,7 +130,7 @@ end
   )
   stats = GenericExecutionStats(nls)
   solver = CaNNOLeSSolver(nls)
-  stats = solve!(solver, nls, stats, check_small_residual = false)
+  stats = solve!(solver, nls, stats)
   @test stats.status_reliable && stats.status == :first_order
   @test stats.solution_reliable && isapprox(stats.solution, [1.0; 1.0], atol = 1e-6)
 
@@ -145,7 +145,7 @@ end
   )
   reset!(solver, nlp)
 
-  stats = solve!(solver, nlp, stats, check_small_residual = false)
+  stats = solve!(solver, nlp, stats)
   @test stats.status_reliable && stats.status == :first_order
   @test stats.solution_reliable && isapprox(stats.solution, [0.0; 0.0], atol = 1e-6)
 end
