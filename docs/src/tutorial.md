@@ -36,7 +36,7 @@ Find below a list of the main options of `cannoles`.
 | λ                           | AbstractVector | eltype(x)[]       | initial guess for the Lagrange mutlipliers. |
 | method                      | Symbol         | :Newton           | method to compute direction, `:Newton`, `:LM`, `:Newton_noFHess`, or `:Newton_vanishing`. |
 | linsolve                    | Symbol         | :ma57             | solver use to compute the factorization: `:ma57`, `:ma97`, `:ldlfactorizations` |
-| check_small_residual        | Bool           | true              | |
+| check_small_residual        | Bool           | false             | |
 | always_accept_extrapolation | Bool           | false             | |
 | δdec                        | Real           | eltype(x)(0.1)    | |
 ```

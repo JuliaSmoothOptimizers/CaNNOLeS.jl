@@ -22,6 +22,8 @@ export cannoles, CaNNOLeSSolver, solve!
 
 include("solver_types.jl")
 
+SolverCore.eval_fun(nls::AbstractNLSModel) = sum_counters(nls)
+
 """
     cannoles(nls)
 
@@ -54,7 +56,7 @@ or even pre-allocate the output:
 - `max_inner::Int = 10000`: maximum number of inner iterations;
 - `ϵtol::Real = √eps(eltype(x))`: stopping tolerance;
 - `verbose::Int = 0`: if > 0, display iteration details every `verbose` iteration;
-- `check_small_residual::Bool = true`: if `true`, stop whenever ``‖F(x)‖₂² ≤ ϵtol`` and ``‖c(xᵏ)‖∞ ≤ √ϵtol``;
+- `check_small_residual::Bool = false`: if `true`, stop whenever ``‖F(x)‖₂² ≤ ϵtol`` and ``‖c(xᵏ)‖∞ ≤ √ϵtol``;
 - `always_accept_extrapolation::Bool = false`: if `true`, run even if the extrapolation step fails;
 - `δdec::Real = eltype(x)(0.1)`: reducing factor on the parameter `δ`.
 
@@ -62,6 +64,25 @@ The algorithm stops when ``‖c(xᵏ)‖∞ ≤ ϵtol`` and ``‖∇F(xᵏ)ᵀF(
 
 # Output
 The value returned is a `GenericExecutionStats`, see `SolverCore.jl`.
+
+# Callback
+The callback is called at each iteration.
+The expected signature of the callback is `callback(nls, solver, stats)`, and its output is ignored.
+Changing any of the input arguments will affect the subsequent iterations.
+In particular, setting `stats.status = :user` will stop the algorithm.
+All relevant information should be available in `nlp` and `solver`.
+Notably, you can access, and modify, the following:
+- `solver.x`: current iterate;
+- `solver.cx`: current value of the constraints at `x`;
+- `stats`: structure holding the output of the algorithm (`GenericExecutionStats`), which contains, among other things:
+  - `stats.solution`: current iterate;
+  - `stats.multipliers`: current Lagrange multipliers wrt to the constraints;
+  - `stats.primal_feas`:the primal feasibility norm at `solution`;
+  - `stats.dual_feas`: the dual feasibility norm at `solution`;
+  - `stats.iter`: current iteration counter;
+  - `stats.objective`: current objective function value;
+  - `stats.status`: current status of the algorithm. Should be `:unknown` unless the algorithm has attained a stopping criterion. Changing this to anything will stop the algorithm, but you should use `:user` to properly indicate the intention.
+  - `stats.elapsed_time`: elapsed time in seconds.
 
 # Examples
 ```jldoctest
@@ -278,6 +299,7 @@ function SolverCore.solve!(
   solver::CaNNOLeSSolver,
   nls::AbstractNLSModel,
   stats::GenericExecutionStats;
+  callback = (args...) -> nothing,
   x::AbstractVector = nls.meta.x0,
   λ::AbstractVector = eltype(x)[],
   method::Symbol = :Newton,
@@ -286,7 +308,7 @@ function SolverCore.solve!(
   max_inner::Int = 10000,
   ϵtol::Real = √eps(eltype(x)),
   verbose::Integer = 0,
-  check_small_residual::Bool = true,
+  check_small_residual::Bool = false,
   always_accept_extrapolation::Bool = false,
   δdec::Real = eltype(x)(0.1),
 )
@@ -426,11 +448,24 @@ function SolverCore.solve!(
   if ncon == 0
     η = zero(T)
   end
-  iter = 1
+  set_iter!(stats, 0)
   inner_iter = 0
   nbk = nfact = nlinsolve = 0
 
   ϵk = 1e3
+
+  status = SolverCore.get_status(
+    nls;
+    elapsed_time = elapsed_time,
+    iter = inner_iter,
+    optimal = first_order,
+    small_residual = small_residual,
+    exception = broken,
+    max_eval = max_f,
+    max_time = max_time,
+    max_iter = max_inner,
+  )
+  set_status!(stats, status)
 
   if verbose > 0
     @info log_header(
@@ -456,7 +491,15 @@ function SolverCore.solve!(
     )
   end
 
-  while !(solved || tired || broken)
+  set_objective!(stats, dot(Fx, Fx) / 2)
+  set_residuals!(stats, norm(primal[(nequ + 1):end]), normdual)
+  set_solution!(stats, x)
+  set_constraint_multipliers!(stats, λ)
+  callback(nls, solver, stats)
+
+  done = stats.status != :unknown
+
+  while !done
     # |G(w) - μe|
     combined_optimality = normdual + normprimal
     δ = max(δmin, min(δdec * δ, combined_optimality))
@@ -634,10 +677,10 @@ function SolverCore.solve!(
       tired = sum_counters(nls) > max_f || elapsed_time > max_time || inner_iter > max_inner
 
       verbose > 0 &&
-        mod(iter, verbose) == 0 &&
+        mod(stats.iter, verbose) == 0 &&
         @info log_row(
           Any[
-            iter,
+            stats.iter,
             sum_counters(nls),
             fx,
             elapsed_time,
@@ -676,10 +719,10 @@ function SolverCore.solve!(
     tired = sum_counters(nls) > max_f || elapsed_time > max_time || inner_iter > max_inner
 
     verbose > 0 &&
-      mod(iter, verbose) == 0 &&
+      mod(stats.iter, verbose) == 0 &&
       @info log_row(
         Any[
-          iter,
+          stats.iter,
           sum_counters(nls),
           fx,
           elapsed_time,
@@ -694,34 +737,30 @@ function SolverCore.solve!(
           nbk,
         ],
       )
-    iter += 1
+    set_iter!(stats, stats.iter + 1)
+    set_time!(stats, elapsed_time)
+    status = SolverCore.get_status(
+      nls;
+      elapsed_time = elapsed_time,
+      iter = inner_iter,
+      optimal = first_order,
+      small_residual = small_residual,
+      exception = broken,
+      max_eval = max_f,
+      max_time = max_time,
+      max_iter = max_inner,
+    )
+    set_status!(stats, status)
+
+    set_objective!(stats, dot(Fx, Fx) / 2)
+    set_residuals!(stats, norm(primal[(nequ + 1):end]), normdual)
+    set_constraint_multipliers!(stats, λ)
+    set_solution!(stats, x)
+    callback(nls, solver, stats)
+
+    done = stats.status != :unknown
   end
 
-  status = if first_order
-    :first_order
-    #elseif small_residual
-    #  :small_residual
-  elseif tired
-    if sum_counters(nls) > max_f
-      :max_eval
-    elseif elapsed_time > max_time
-      :max_time
-    else
-      :max_iter
-    end
-  elseif broken
-    :exception
-  end
-
-  elapsed_time = time() - start_time
-
-  set_status!(stats, status)
-  set_solution!(stats, x)
-  set_objective!(stats, dot(Fx, Fx) / 2)
-  set_residuals!(stats, norm(primal[(nequ + 1):end]), normdual)
-  set_iter!(stats, iter)
-  set_time!(stats, elapsed_time)
-  set_constraint_multipliers!(stats, λ)
   set_solver_specific!(stats, :nbk, nbk)
   set_solver_specific!(stats, :nfact, nfact)
   set_solver_specific!(stats, :nlinsolve, nlinsolve)

@@ -19,6 +19,24 @@ nls = ADNLSModel(x -> x, zeros(5), 5, zeros(5), ones(5))
 nls = DummyModel(NLPModelMeta(1, minimize = false))
 @test_throws ErrorException("CaNNOLeS only works for minimization problem") cannoles(nls)
 
+@testset "Test callback" begin
+  nls = ADNLSModel(
+    x -> [x[1] - 1; 10 * (x[2] - x[1]^2)],
+    [-1.2; 1.0],
+    2,
+    x -> [x[1] * x[2] - 1],
+    [0.0],
+    [0.0],
+  )
+  function cb(nls, solver, stats)
+    if stats.iter == 4
+      stats.status = :user
+    end
+  end
+  stats = cannoles(nls, callback = cb)
+  @test stats.iter == 4
+end
+
 function cannoles_tests()
   F_linear(x) = [x[1] - 2; x[2] - 3]
   F_Rosen(x) = [x[1] - 1; 10 * (x[2] - x[1]^2)]
