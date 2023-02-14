@@ -54,8 +54,13 @@ end
 
 get_vals(LDLT::LinearSolverStruct) = LDLT.vals
 
-solve_ldl!(::AbstractVector, factor::Nothing, ::AbstractVector) = error("LDLt factorization failed.")
-function solve_ldl!(rhs::AbstractVector, factor::LDLFactorizations.LDLFactorization, d::AbstractVector)
+solve_ldl!(::AbstractVector, factor::Nothing, ::AbstractVector) =
+  error("LDLt factorization failed.")
+function solve_ldl!(
+  rhs::AbstractVector,
+  factor::LDLFactorizations.LDLFactorization,
+  d::AbstractVector,
+)
   d .= -(factor \ rhs)
   return d, true
 end
