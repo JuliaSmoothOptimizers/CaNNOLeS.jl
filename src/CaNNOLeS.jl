@@ -422,17 +422,11 @@ function SolverCore.solve!(
 
   # Small residual
   small_residual = check_small_residual && fx ≤ ϵf && norm(cx) ≤ ϵc
-  sd = ncon > 0 ? max(smax, norm(λ, 1) / ncon) / smax : one(T)
+  sd = dual_scaling(λ, smax)
   first_order = max(normdual / sd, normprimal) <= ϵtol
   if small_residual && !first_order
-    r .= Fx
-    Jxtr = Jx' * r
-    λ = T.(cgls(Jcx', Jxtr)[1]) # Armand 2012
-    dual .= Jxtr - Jcx' * λ
-    normdual = norm(dual, Inf)
-    primal .= [zeros(nequ); cx]
-    normprimal = norm(cx, Inf)
-    sd = ncon > 0 ? max(smax, norm(λ, 1) / ncon) / smax : one(T)
+    normprimal, normdual = optimality_check_small_residual!(r, λ, dual, primal, Fx, Jx, Jcx, Jxtr)
+    sd = dual_scaling(λ, smax)
     first_order = max(normdual / sd, normprimal) <= ϵtol
   end
   solved = first_order
@@ -701,18 +695,12 @@ function SolverCore.solve!(
     normprimal = normprimalhat
 
     elapsed_time = time() - start_time
-    sd = ncon > 0 ? max(smax, norm(λ, 1) / ncon) / smax : one(T)
+    sd = dual_scaling(λ, smax)
     first_order = max(normdual / sd, normprimal) <= ϵtol
     small_residual = check_small_residual && fx ≤ ϵf && norm(cx) ≤ ϵc
     if small_residual && !first_order
-      r .= Fx
-      Jxtr = Jx' * r
-      λ = T.(cgls(Jcx', Jxtr)[1]) # Armand 2012
-      dual = Jxtr - Jcx' * λ
-      normdual = norm(dual, Inf)
-      primal = [zeros(nequ); cx]
-      normprimal = norm(cx, Inf)
-      sd = ncon > 0 ? max(smax, norm(λ, 1) / ncon) / smax : one(T)
+      normprimal, normdual = optimality_check_small_residual!(r, λ, dual, primal, Fx, Jx, Jcx, Jxtr)
+      sd = dual_scaling(λ, smax)
       first_order = max(normdual / sd, normprimal) <= ϵtol
     end
     solved = first_order
@@ -766,6 +754,34 @@ function SolverCore.solve!(
   set_solver_specific!(stats, :nlinsolve, nlinsolve)
   set_solver_specific!(stats, :internal_msg, internal_msg)
   return stats
+end
+
+"""
+    normprimal, normdual = optimality_check_small_residual!(r, λ, dual, primal, Fx, Jx, Jcx, Jxtr)
+
+Compute the norm of the primal and dual residuals.
+The values of `r`, `Jxtr`, `λ`, `primal` and `dual` are updated.
+"""
+function optimality_check_small_residual!(r, λ, dual, primal, Fx, Jx, Jcx, Jxtr)
+  r .= Fx
+  Jxtr = Jx' * r
+  λ = T.(cgls(Jcx', Jxtr)[1]) # Armand 2012
+  dual .= Jxtr - Jcx' * λ
+  normdual = norm(dual, Inf)
+  primal .= [zeros(nequ); cx]
+  normprimal = norm(cx, Inf)
+  return normprimal, normdual
+end
+
+"""
+    sd = dual_scaling(λ::AbstractVector{T}, smax::T)
+
+Return the dual scaling on the residual, so that the algorithm stops when `max(normdual / sd, normprimal) <= ϵtol`.
+Return 1 if the problem has no constraints.
+"""
+function dual_scaling(λ::AbstractVector{T}, smax::T) where {T}
+  ncon = length(λ)
+  return ncon > 0 ? max(smax, norm(λ, 1) / ncon) / smax : one(T)
 end
 
 @deprecate newton_system(x, r, λ, Fx, rhs, LDLT, ρold, params, method, linsolve) newton_system(
