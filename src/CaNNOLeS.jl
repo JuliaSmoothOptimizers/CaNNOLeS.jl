@@ -140,6 +140,7 @@ mutable struct CaNNOLeSSolver{Ti, T, V, F} <: AbstractOptimizationSolver
   Jct_vals::V
 
   LDLT::F
+  cgls_solver::CglsSolver{T, T, V}
 end
 
 function CaNNOLeSSolver(nls::AbstractNLSModel{T, V}; linsolve::Symbol = :ma57) where {T, V}
@@ -232,6 +233,8 @@ function CaNNOLeSSolver(nls::AbstractNLSModel{T, V}; linsolve::Symbol = :ma57) w
   end
   F = typeof(LDLT)
 
+  cgls_solver = CglsSolver(nvar, ncon, V)
+
   return CaNNOLeSSolver{Ti, T, V, F}(
     x,
     cx,
@@ -261,6 +264,7 @@ function CaNNOLeSSolver(nls::AbstractNLSModel{T, V}; linsolve::Symbol = :ma57) w
     Jcx_vals,
     Jct_vals,
     LDLT,
+    cgls_solver,
   )
 end
 
@@ -355,6 +359,7 @@ function SolverCore.solve!(
   Jcx_vals, Jct_vals = solver.Jcx_vals, solver.Jct_vals
   vals = solver.vals
   LDLT = solver.LDLT
+  cgls_solver = solver.cgls_solver
 
   # Shorter function definitions
   F!(x, Fx) = residual!(nls, x, Fx)
@@ -401,7 +406,8 @@ function SolverCore.solve!(
   elapsed_time = 0.0
 
   if length(λ) == 0
-    λ = T.(cgls(Jcx', Jxtr)[1]) # Armand 2012
+    Krylov.solve!(cgls_solver, Jcx', Jxtr) # Armand 2012
+    λ = cgls_solver.x
     if norm(λ) == 0
       λ = ones(T, ncon)
     end
@@ -425,7 +431,8 @@ function SolverCore.solve!(
   sd = dual_scaling(λ, smax)
   first_order = max(normdual / sd, normprimal) <= ϵtol
   if small_residual && !first_order
-    normprimal, normdual = optimality_check_small_residual!(r, λ, dual, primal, Fx, cx, Jx, Jcx, Jxtr)
+    normprimal, normdual =
+      optimality_check_small_residual!(cgls_solver, r, λ, dual, primal, Fx, cx, Jx, Jcx, Jxtr)
     sd = dual_scaling(λ, smax)
     first_order = max(normdual / sd, normprimal) <= ϵtol
   end
@@ -699,7 +706,8 @@ function SolverCore.solve!(
     first_order = max(normdual / sd, normprimal) <= ϵtol
     small_residual = check_small_residual && fx ≤ ϵf && norm(cx) ≤ ϵc
     if small_residual && !first_order
-      normprimal, normdual = optimality_check_small_residual!(r, λ, dual, primal, Fx, cx, Jx, Jcx, Jxtr)
+      normprimal, normdual =
+        optimality_check_small_residual!(cgls_solver, r, λ, dual, primal, Fx, cx, Jx, Jcx, Jxtr)
       sd = dual_scaling(λ, smax)
       first_order = max(normdual / sd, normprimal) <= ϵtol
     end
@@ -757,15 +765,27 @@ function SolverCore.solve!(
 end
 
 """
-    normprimal, normdual = optimality_check_small_residual!(r, λ, dual, primal, Fx, cx, Jx, Jcx, Jxtr)
+    normprimal, normdual = optimality_check_small_residual!(cgls_solver, r, λ, dual, primal, Fx, cx, Jx, Jcx, Jxtr)
 
 Compute the norm of the primal and dual residuals.
 The values of `r`, `Jxtr`, `λ`, `primal` and `dual` are updated.
 """
-function optimality_check_small_residual!(r::AbstractVector{T}, λ::AbstractVector{T}, dual::AbstractVector{T}, primal::AbstractVector{T}, Fx::AbstractVector{T}, cx::AbstractVector{T}, Jx, Jcx, Jxtr::AbstractVector{T}) where {T}
+function optimality_check_small_residual!(
+  cgls_solver::CglsSolver{T, T, V},
+  r::V,
+  λ::V,
+  dual::V,
+  primal::V,
+  Fx::V,
+  cx::V,
+  Jx,
+  Jcx,
+  Jxtr::V,
+) where {T, V}
   r .= Fx
   Jxtr = Jx' * r
-  λ = T.(cgls(Jcx', Jxtr)[1]) # Armand 2012
+  Krylov.solve!(cgls_solver, Jcx', Jxtr)
+  λ .= cgls_solver.x # Armand 2012
   dual .= Jxtr - Jcx' * λ
   normdual = norm(dual, Inf)
   nequ = length(r)
