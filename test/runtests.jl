@@ -118,6 +118,38 @@ end
   @test stats.solution_reliable && isapprox(stats.solution, [1.0; 1.0], atol = 1e-6)
 end
 
+@testset "Small residual stop" begin
+  nls = ADNLSModel(
+    x -> [x[1] - 1],
+    [-1.2; 1.0],
+    1,
+    x -> [10 * (x[2] - x[1]^2)],
+    zeros(1),
+    zeros(1),
+    name = "HS6",
+  )
+  stats = GenericExecutionStats(nls)
+  solver = CaNNOLeSSolver(nls)
+  solve!(solver, nls, stats, check_small_residual = true)
+  @test stats.status_reliable && stats.status == :small_residual
+  @test stats.objective_reliable && isapprox(stats.objective, 0, atol = 1e-6)
+
+  nls = ADNLSModel(
+    x -> [x[1] - 1],
+    [-1.2; 1.0],
+    1,
+    x -> [10 * (x[2] - x[1]^2)],
+    zeros(1),
+    zeros(1),
+    name = "HS6",
+  )
+  stats = GenericExecutionStats(nls)
+  solver = CaNNOLeSSolver(nls)
+  solve!(solver, nls, stats, x = [0.99999, 0.99999], check_small_residual = true)
+  @test stats.status_reliable && stats.status == :small_residual
+  @test stats.objective_reliable && isapprox(stats.objective, 0, atol = 1e-6)
+end
+
 @testset "Re-solve with a different problem" begin
   nls = ADNLSModel(
     x -> [x[1] - 1],
