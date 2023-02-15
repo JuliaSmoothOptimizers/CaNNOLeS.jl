@@ -129,7 +129,7 @@ end
     name = "HS6",
   )
   stats = GenericExecutionStats(nls)
-  solver = CaNNOLeSSolver(nls)
+  solver = CaNNOLeSSolver(nls, linsolve = :ldlfactorizations)
   solve!(solver, nls, stats, check_small_residual = true)
   @test stats.status_reliable && stats.status == :small_residual
   @test stats.objective_reliable && isapprox(stats.objective, 0, atol = 1e-6)
