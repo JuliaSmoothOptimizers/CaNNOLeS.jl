@@ -425,7 +425,8 @@ function SolverCore.solve!(
   sd = dual_scaling(λ, smax)
   first_order = max(normdual / sd, normprimal) <= ϵtol
   if small_residual && !first_order
-    normprimal, normdual = optimality_check_small_residual!(r, λ, dual, primal, Fx, cx, Jx, Jcx, Jxtr)
+    normprimal, normdual =
+      optimality_check_small_residual!(r, λ, dual, primal, Fx, cx, Jx, Jcx, Jxtr)
     sd = dual_scaling(λ, smax)
     first_order = max(normdual / sd, normprimal) <= ϵtol
   end
@@ -699,7 +700,8 @@ function SolverCore.solve!(
     first_order = max(normdual / sd, normprimal) <= ϵtol
     small_residual = check_small_residual && fx ≤ ϵf && norm(cx) ≤ ϵc
     if small_residual && !first_order
-      normprimal, normdual = optimality_check_small_residual!(r, λ, dual, primal, Fx, cx, Jx, Jcx, Jxtr)
+      normprimal, normdual =
+        optimality_check_small_residual!(r, λ, dual, primal, Fx, cx, Jx, Jcx, Jxtr)
       sd = dual_scaling(λ, smax)
       first_order = max(normdual / sd, normprimal) <= ϵtol
     end
@@ -762,7 +764,17 @@ end
 Compute the norm of the primal and dual residuals.
 The values of `r`, `Jxtr`, `λ`, `primal` and `dual` are updated.
 """
-function optimality_check_small_residual!(r::AbstractVector{T}, λ::AbstractVector{T}, dual::AbstractVector{T}, primal::AbstractVector{T}, Fx::AbstractVector{T}, cx::AbstractVector{T}, Jx, Jcx, Jxtr::AbstractVector{T}) where {T}
+function optimality_check_small_residual!(
+  r::AbstractVector{T},
+  λ::AbstractVector{T},
+  dual::AbstractVector{T},
+  primal::AbstractVector{T},
+  Fx::AbstractVector{T},
+  cx::AbstractVector{T},
+  Jx,
+  Jcx,
+  Jxtr::AbstractVector{T},
+) where {T}
   r .= Fx
   Jxtr = Jx' * r
   λ = T.(cgls(Jcx', Jxtr)[1]) # Armand 2012
