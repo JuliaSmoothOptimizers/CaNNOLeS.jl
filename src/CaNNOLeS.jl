@@ -17,6 +17,82 @@ function __init__()
   # end
 end
 
+const avail_mtds = Symbol[:Newton, :LM, :Newton_noFHess, :Newton_vanishing]
+
+"""
+    _check_available_method(method::Symbol)
+
+Return an error if `method` is not in `CaNNOLeS.avail_mtds`
+"""
+function _check_available_method(method::Symbol)
+  if !(method in avail_mtds)
+    s = "`method` must be one of these: "
+    for x in avail_mtds
+      s *= "`$x`, "
+    end
+    error(s[1:(end - 2)])
+  end
+end
+
+"""
+    ParamCaNNOLeS(eig_tol,δmin,κdec,κinc,κlargeinc,ρ0,ρmax,ρmin,γA)
+    ParamCaNNOLeS(::Type{T})
+
+Structure containing all the parameters used in the [`cannoles`](@ref) call.
+"""
+mutable struct ParamCaNNOLeS{T}
+  eig_tol::T
+  δmin::T
+  κdec::T
+  κinc::T
+  κlargeinc::T
+  ρ0::T
+  ρmax::T
+  ρmin::T
+  γA::T
+end
+
+function ParamCaNNOLeS(
+  ::Type{T};
+  ϵM = eps(T),
+  eig_tol = ϵM,
+  δmin = √ϵM,
+  κdec = T(1 // 3),
+  κinc = T(8),
+  κlargeinc = min(T(100), sizeof(T) * 16),
+  ρ0 = ϵM^T(1 / 3),
+  ρmax = min(ϵM^T(-2.0), prevfloat(T(Inf))),
+  ρmin = √ϵM,
+  γA = ϵM^T(1 / 4),
+) where {T}
+  ParamCaNNOLeS(eig_tol, δmin, κdec, κinc, κlargeinc, ρ0, ρmax, ρmin, γA)
+end
+
+function update!(
+  params::ParamCaNNOLeS{T},
+  ϵM::T;
+  eig_tol = ϵM,
+  δmin = √ϵM,
+  κdec = T(1 // 3),
+  κinc = T(8),
+  κlargeinc = min(T(100), sizeof(T) * 16),
+  ρ0 = ϵM^T(1 / 3),
+  ρmax = min(ϵM^T(-2.0), prevfloat(T(Inf))),
+  ρmin = √ϵM,
+  γA = ϵM^T(1 / 4),
+) where {T}
+  params.eig_tol = eig_tol
+  params.δmin = δmin
+  params.κdec = κdec
+  params.κinc = κinc
+  params.κlargeinc = κlargeinc
+  params.ρ0 = ρ0
+  params.ρmax = ρmax
+  params.ρmin = ρmin
+  params.γA = γA
+  return params
+end
+
 import SolverCore.solve!
 export cannoles, CaNNOLeSSolver, solve!
 
@@ -141,6 +217,8 @@ mutable struct CaNNOLeSSolver{Ti, T, V, F} <: AbstractOptimizationSolver
 
   LDLT::F
   cgls_solver::CglsSolver{T, T, V}
+
+  params::ParamCaNNOLeS{T}
 end
 
 function CaNNOLeSSolver(nls::AbstractNLSModel{T, V}; linsolve::Symbol = :ma57) where {T, V}
@@ -235,6 +313,8 @@ function CaNNOLeSSolver(nls::AbstractNLSModel{T, V}; linsolve::Symbol = :ma57) w
 
   cgls_solver = CglsSolver(nvar, ncon, V)
 
+  params = ParamCaNNOLeS(T)
+
   return CaNNOLeSSolver{Ti, T, V, F}(
     x,
     cx,
@@ -265,6 +345,7 @@ function CaNNOLeSSolver(nls::AbstractNLSModel{T, V}; linsolve::Symbol = :ma57) w
     Jct_vals,
     LDLT,
     cgls_solver,
+    params,
   )
 end
 
@@ -318,16 +399,11 @@ function SolverCore.solve!(
 )
   reset!(stats)
   start_time = time()
-  avail_mtds = [:Newton, :LM, :Newton_noFHess, :Newton_vanishing]
-  if !(method in avail_mtds)
-    s = "`method` must be one of these: "
-    s *= join(["`$x`" for x in avail_mtds], ", ")
-    error(s)
-  end
+
+  _check_available_method(method)
   merit = :auglag
   T = eltype(x)
 
-  ϵM = eps(T)
   nvar = nls.meta.nvar
   nequ = nls_meta(nls).nequ
   ncon = nls.meta.ncon
@@ -335,21 +411,9 @@ function SolverCore.solve!(
   x = solver.x .= x
 
   # Parameters
-  params = Dict{Symbol, T}()
-  ρmin, ρ0, ρmax = √ϵM, ϵM^T(1 / 3), min(ϵM^T(-2.0), prevfloat(T(Inf)))
+  params = update!(solver.params, eps(T))
   ρ = ρold = zero(T)
-  δ, δmin = one(T), √ϵM
-  κdec, κinc, κlargeinc = T(1 / 3), T(8.0), min(T(100.0), sizeof(T) * 16)
-  eig_tol = ϵM
-  params[:eig_tol] = eig_tol
-  params[:δmin] = δmin
-  params[:κdec] = κdec
-  params[:κinc] = κinc
-  params[:κlargeinc] = κlargeinc
-  params[:ρ0] = ρ0
-  params[:ρmax] = ρmax
-  params[:ρmin] = ρmin
-  params[:γA] = ϵM^T(1 / 4)
+  δ = one(T)
 
   nnzhF, nnzhc = nls.nls_meta.nnzh, ncon > 0 ? nls.meta.nnzh : 0
   nnzjF, nnzjc = nls.nls_meta.nnzj, nls.meta.nnzj
@@ -503,7 +567,7 @@ function SolverCore.solve!(
   while !done
     # |G(w) - μe|
     combined_optimality = normdual + normprimal
-    δ = max(δmin, min(δdec * δ, combined_optimality))
+    δ = max(params.δmin, min(δdec * δ, combined_optimality))
 
     damp = one(T)
 
@@ -551,8 +615,8 @@ function SolverCore.solve!(
         nfact += nfacti
         nlinsolve += 1
 
-        if ρ > params[:ρmax] || !newton_success || any(isinf.(d)) || any(isnan.(d)) || fx ≥ T(1e60) # Error on hs70
-          internal_msg = if ρ > params[:ρmax]
+        if ρ > params.ρmax || !newton_success || any(isinf.(d)) || any(isnan.(d)) || fx ≥ T(1e60) # Error on hs70
+          internal_msg = if ρ > params.ρmax
             "ρ → ∞"
           elseif !newton_success
             "Failure in Newton step computation"
@@ -670,7 +734,7 @@ function SolverCore.solve!(
          inner_iter > 0 &&
          normdualhat ≤ T(0.99) * normdual + ϵk / 2 &&
          normprimalhat > T(0.99) * normprimal + ϵk / 2
-        δ = max(δ / 10, δmin)
+        δ = max(δ / 10, params.δmin)
       end
 
       inner_iter += 1
@@ -819,7 +883,7 @@ end
     newton_system!(d, nvar, nequ, ncon, rhs, LDLT, ρold, params)
 
 Compute an LDLt factorization of the (`nvar + nequ + ncon`)-square matrix for the Newton system contained in `LDLT`, i.e., `sparse(LDLT.rows, LDLT.cols, LDLT.vals, N, N)`.
-If the factorization fails, a new factorization is attempted with an increased value for the regularization ρ as long as it is smaller than `params[:ρmax]`.
+If the factorization fails, a new factorization is attempted with an increased value for the regularization ρ as long as it is smaller than `params.ρmax`.
 The factorization is then used to solve the linear system whose right-hand side is `rhs`.
 
 # Output
@@ -838,34 +902,34 @@ function newton_system!(
   rhs::AbstractVector{T},
   LDLT::LinearSolverStruct,
   ρold::T,
-  params::Dict{Symbol, T},
+  params::ParamCaNNOLeS{T},
 ) where {T}
   nfact = 0
 
   ρ = zero(T)
 
-  success = try_to_factorize(LDLT, nvar, nequ, ncon, params[:eig_tol])
+  success = try_to_factorize(LDLT, nvar, nequ, ncon, params.eig_tol)
   nfact += 1
 
   vals = get_vals(LDLT)
   sI = (length(vals) - nvar + 1):length(vals)
 
   if !success
-    ρ = ρold == 0 ? params[:ρ0] : max(params[:ρmin], params[:κdec] * ρold)
+    ρ = ρold == 0 ? params.ρ0 : max(params.ρmin, params.κdec * ρold)
     vals[sI] .= ρ
-    success = try_to_factorize(LDLT, nvar, nequ, ncon, params[:eig_tol])
+    success = try_to_factorize(LDLT, nvar, nequ, ncon, params.eig_tol)
     nfact += 1
     ρiter = 0
-    while !success && ρ <= params[:ρmax]
-      ρ = ρold == 0 ? params[:κlargeinc] * ρ : params[:κinc] * ρ
-      if ρ <= params[:ρmax]
+    while !success && ρ <= params.ρmax
+      ρ = ρold == 0 ? params.κlargeinc * ρ : params.κinc * ρ
+      if ρ <= params.ρmax
         vals[sI] .= ρ
-        success = try_to_factorize(LDLT, nvar, nequ, ncon, params[:eig_tol])
+        success = try_to_factorize(LDLT, nvar, nequ, ncon, params.eig_tol)
         nfact += 1
       end
       ρiter += 1
     end
-    if ρ <= params[:ρmax]
+    if ρ <= params.ρmax
       ρold = ρ
     end
   end
@@ -923,7 +987,7 @@ function line_search(
   ϕt = ϕ(xt, λ, Ft, ct, η)
 
   α = one(T)
-  armijo_param = params[:γA]
+  armijo_param = params.γA
   nbk = 0
   while !(ϕt <= ϕx + armijo_param * α * Dϕ)
     nbk += 1
