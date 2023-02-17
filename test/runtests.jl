@@ -16,6 +16,11 @@ end
 nls = ADNLSModel(x -> x, zeros(5), 5, zeros(5), ones(5))
 @test_throws ErrorException("Problem has inequalities, can't solve it") cannoles(nls)
 
+nls = ADNLSModel(x -> x, zeros(1), 1, x -> [x[1]], zeros(1), zeros(1))
+s = "`method` must be one of these: "
+s *= join(["`$x`" for x in CaNNOLeS.avail_mtds], ", ")
+@test_throws ErrorException(s) cannoles(nls, method = :truc)
+
 nls = DummyModel(NLPModelMeta(1, minimize = false))
 @test_throws ErrorException("CaNNOLeS only works for minimization problem") cannoles(nls)
 
