@@ -131,8 +131,9 @@ or even pre-allocate the output:
 - `max_time::Float64 = 30.0`: maximum time limit in seconds;
 - `max_inner::Int = 10000`: maximum number of inner iterations;
 - `ϵtol::Real = √eps(eltype(x))`: stopping tolerance;
+- `Fatol::T = √eps(T)`: absolute tolerance on the residual;
+- `Frtol::T = eps(T)`: relative tolerance on the residual, the algorithm stops when ‖F(xᵏ)‖ ≤ Fatol + Frtol * ‖F(x⁰)‖  and ‖c(xᵏ)‖∞ ≤ √ϵtol;
 - `verbose::Int = 0`: if > 0, display iteration details every `verbose` iteration;
-- `check_small_residual::Bool = false`: if `true`, stop whenever ``‖F(x)‖₂² ≤ ϵtol`` and ``‖c(xᵏ)‖∞ ≤ √ϵtol``;
 - `always_accept_extrapolation::Bool = false`: if `true`, run even if the extrapolation step fails;
 - `δdec::Real = eltype(x)(0.1)`: reducing factor on the parameter `δ`.
 
@@ -392,8 +393,9 @@ function SolverCore.solve!(
   max_time::Real = 30.0,
   max_inner::Int = 10000,
   ϵtol::Real = √eps(eltype(x)),
+  Fatol::Real = √eps(eltype(x)),
+  Frtol::Real = eps(eltype(x)),
   verbose::Integer = 0,
-  check_small_residual::Bool = false,
   always_accept_extrapolation::Bool = false,
   δdec::Real = eltype(x)(0.1),
 )
@@ -487,11 +489,11 @@ function SolverCore.solve!(
   normprimalhat = normprimal = norm(primal, Inf)
 
   smax = T(100.0)
-  ϵf = ϵtol / 2 # fx = 0.5‖F(x)‖² ≤ ϵf
+  ϵF = Fatol + Frtol * 2 * √fx # fx = 0.5‖F(x)‖²
   ϵc = sqrt(ϵtol)
 
   # Small residual
-  small_residual = check_small_residual && fx ≤ ϵf && norm(cx) ≤ ϵc
+  small_residual = (2 * √fx <= ϵF) && norm(cx) ≤ ϵc
   sd = dual_scaling(λ, smax)
   first_order = max(normdual / sd, normprimal) <= ϵtol
   if small_residual && !first_order
@@ -768,7 +770,7 @@ function SolverCore.solve!(
     elapsed_time = time() - start_time
     sd = dual_scaling(λ, smax)
     first_order = max(normdual / sd, normprimal) <= ϵtol
-    small_residual = check_small_residual && fx ≤ ϵf && norm(cx) ≤ ϵc
+    small_residual = (2 * √fx <= ϵF) && norm(cx) ≤ ϵc
     if small_residual && !first_order
       normprimal, normdual =
         optimality_check_small_residual!(cgls_solver, r, λ, dual, primal, Fx, cx, Jx, Jcx, Jxtr)

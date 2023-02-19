@@ -135,22 +135,14 @@ end
   )
   stats = GenericExecutionStats(nls)
   solver = CaNNOLeSSolver(nls, linsolve = :ldlfactorizations)
-  solve!(solver, nls, stats, check_small_residual = true)
+  solve!(solver, nls, stats, ϵtol = 1e-15, Fatol = 1e-6, Frtol = 0.0)
   @test stats.status_reliable && stats.status == :small_residual
   @test stats.objective_reliable && isapprox(stats.objective, 0, atol = 1e-6)
 
-  nls = ADNLSModel(
-    x -> [x[1] - 1],
-    [-1.2; 1.0],
-    1,
-    x -> [10 * (x[2] - x[1]^2)],
-    zeros(1),
-    zeros(1),
-    name = "HS6",
-  )
+  reset!(nls)
   stats = GenericExecutionStats(nls)
   solver = CaNNOLeSSolver(nls)
-  solve!(solver, nls, stats, x = [0.99999, 0.99999], check_small_residual = true)
+  solve!(solver, nls, stats, x = [0.99999, 0.99999], ϵtol = 1e-15, Fatol = 1e-6, Frtol = 0.0)
   @test stats.status_reliable && stats.status == :small_residual
   @test stats.objective_reliable && isapprox(stats.objective, 0, atol = 1e-6)
 end
