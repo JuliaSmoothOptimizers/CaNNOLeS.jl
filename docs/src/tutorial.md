@@ -22,7 +22,7 @@ Find below a list of the main options of `cannoles`.
 | -------------------- | ------------- | --------------- | -------------------------------------------------- |
 | ϵtol                 | AbstractFloat | √eps(eltype(x)) | tolerance.                                         |
 | unbounded_threshold  | AbstractFloat | -1e5            | below this threshold the problem is unbounded.     |
-| max_f                | Integer       | 100000          | evaluation limit, e.g. `sum_counters(nls) > max_f` |
+| max_eval             | Integer       | 100000          | evaluation limit, e.g. `neval_residual(nls) + neval_cons(nls) > max_eval` |
 | max_time             | AbstractFloat | 30.             | maximum number of seconds.                         |
 | max_inner            | Integer       | 10000           | maximum number of iterations.                      |
 ```

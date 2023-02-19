@@ -98,7 +98,9 @@ export cannoles, CaNNOLeSSolver, solve!
 
 include("solver_types.jl")
 
-SolverCore.eval_fun(nls::AbstractNLSModel) = sum_counters(nls)
+import SolverCore.eval_fun
+
+SolverCore.eval_fun(nls::AbstractNLSModel) = neval_residual(nls) + neval_cons(nls)
 
 """
     cannoles(nls)
@@ -127,7 +129,7 @@ or even pre-allocate the output:
 - `λ::AbstractVector = eltype(x)[]`: the initial Lagrange multiplier;
 - `method::Symbol = :Newton`: available methods `:Newton, :LM, :Newton_noFHess`, and `:Newton_vanishing`;
 - `linsolve::Symbol = :ma57`: solver to compute LDLt factorization. Available methods are: `:ma57`, `:ldlfactorizations`;
-- `max_f::Real = 100000`: maximum number of evaluations computed by `sum_counters(nls)`;
+- `max_eval::Real = 100000`: maximum number of evaluations computed by `neval_residual(nls) + neval_cons(nls)`;
 - `max_time::Float64 = 30.0`: maximum time limit in seconds;
 - `max_inner::Int = 10000`: maximum number of inner iterations;
 - `ϵtol::Real = √eps(eltype(x))`: stopping tolerance;
@@ -389,7 +391,7 @@ function SolverCore.solve!(
   x::AbstractVector = nls.meta.x0,
   λ::AbstractVector = eltype(x)[],
   method::Symbol = :Newton,
-  max_f::Real = 100000,
+  max_eval::Real = 100000,
   max_time::Real = 30.0,
   max_inner::Int = 10000,
   ϵtol::Real = √eps(eltype(x)),
@@ -504,7 +506,7 @@ function SolverCore.solve!(
   end
   solved = first_order
   elapsed_time = time() - start_time
-  tired = sum_counters(nls) > max_f || elapsed_time > max_time
+  tired = eval_fun(nls) > max_eval || elapsed_time > max_time
   broken = false
   internal_msg = ""
 
@@ -528,7 +530,7 @@ function SolverCore.solve!(
     optimal = first_order,
     small_residual = small_residual,
     exception = broken,
-    max_eval = max_f,
+    max_eval = max_eval,
     max_time = max_time,
     max_iter = max_inner,
   )
@@ -548,7 +550,7 @@ function SolverCore.solve!(
     @info log_row(
       Any[
         0,
-        sum_counters(nls),
+        eval_fun(nls),
         fx,
         0.0,
         normdual,
@@ -741,14 +743,14 @@ function SolverCore.solve!(
 
       inner_iter += 1
       elapsed_time = time() - start_time
-      tired = sum_counters(nls) > max_f || elapsed_time > max_time || inner_iter > max_inner
+      tired = eval_fun(nls) > max_eval || elapsed_time > max_time || inner_iter > max_inner
 
       verbose > 0 &&
         mod(stats.iter, verbose) == 0 &&
         @info log_row(
           Any[
             stats.iter,
-            sum_counters(nls),
+            eval_fun(nls),
             fx,
             elapsed_time,
             normdualhat,
@@ -778,14 +780,14 @@ function SolverCore.solve!(
       first_order = max(normdual / sd, normprimal) <= ϵtol
     end
     solved = first_order
-    tired = sum_counters(nls) > max_f || elapsed_time > max_time || inner_iter > max_inner
+    tired = eval_fun(nls) > max_eval || elapsed_time > max_time || inner_iter > max_inner
 
     verbose > 0 &&
       mod(stats.iter, verbose) == 0 &&
       @info log_row(
         Any[
           stats.iter,
-          sum_counters(nls),
+          eval_fun(nls),
           fx,
           elapsed_time,
           normdual,
@@ -808,7 +810,7 @@ function SolverCore.solve!(
       optimal = first_order,
       small_residual = small_residual,
       exception = broken,
-      max_eval = max_f,
+      max_eval = max_eval,
       max_time = max_time,
       max_iter = max_inner,
     )
