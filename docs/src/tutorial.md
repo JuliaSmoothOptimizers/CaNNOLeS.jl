@@ -20,7 +20,8 @@ Find below a list of the main options of `cannoles`.
 ```
 | Parameters           | Type          | Default         | Description                                        |
 | -------------------- | ------------- | --------------- | -------------------------------------------------- |
-| ϵtol                 | AbstractFloat | √eps(T)         | tolerance.                                         |
+| atol                 | AbstractFloat | √eps(T)         | absolute tolerance.                                |
+| rtol                 | AbstractFloat | √eps(T)         | relative tolerance.                                |
 | unbounded_threshold  | AbstractFloat | -1e5            | below this threshold the problem is unbounded.     |
 | max_eval             | Integer       | 100000          | evaluation limit, e.g. `neval_residual(nls) + neval_cons(nls) > max_eval` |
 | max_time             | AbstractFloat | 30.             | maximum number of seconds.                         |
@@ -48,7 +49,7 @@ using CaNNOLeS, ADNLPModels
 
 # Rosenbrock
 nls = ADNLSModel(x -> [x[1] - 1; 10 * (x[2] - x[1]^2)], [-1.2; 1.0], 2)
-stats = cannoles(nls, ϵtol = 1e-5, x = ones(2))
+stats = cannoles(nls, atol = 1e-5, x = ones(2))
 ```
 
 ```@example ex1

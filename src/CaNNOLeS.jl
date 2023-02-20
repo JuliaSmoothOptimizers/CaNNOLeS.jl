@@ -129,7 +129,8 @@ or even pre-allocate the output:
 - `max_eval::Real = 100000`: maximum number of evaluations computed by `neval_residual(nls) + neval_cons(nls)`;
 - `max_time::Float64 = 30.0`: maximum time limit in seconds;
 - `max_inner::Int = 10000`: maximum number of inner iterations;
-- `ϵtol::Real = √eps(T)`: stopping tolerance;
+- `atol::T = √eps(T)`: absolute tolerance;
+- `rtol::T = √eps(T)`: relative tolerance: the algorithm uses `ϵtol := atol + rtol * ‖∇F(x⁰)ᵀF(x⁰) - ∇c(x⁰)ᵀλ⁰‖`;
 - `Fatol::T = √eps(T)`: absolute tolerance on the residual;
 - `Frtol::T = eps(T)`: relative tolerance on the residual, the algorithm stops when ‖F(xᵏ)‖ ≤ Fatol + Frtol * ‖F(x⁰)‖  and ‖c(xᵏ)‖∞ ≤ √ϵtol;
 - `verbose::Int = 0`: if > 0, display iteration details every `verbose` iteration;
@@ -391,7 +392,8 @@ function SolverCore.solve!(
   max_eval::Real = 100000,
   max_time::Real = 30.0,
   max_inner::Int = 10000,
-  ϵtol::Real = √eps(T),
+  atol::T = √eps(T),
+  rtol::T = √eps(T),
   Fatol::Real = √eps(T),
   Frtol::Real = eps(T),
   verbose::Integer = 0,
@@ -488,6 +490,7 @@ function SolverCore.solve!(
 
   smax = T(100.0)
   ϵF = Fatol + Frtol * 2 * √fx # fx = 0.5‖F(x)‖²
+  ϵtol= atol + rtol * normdual
   ϵc = sqrt(ϵtol)
 
   # Small residual
