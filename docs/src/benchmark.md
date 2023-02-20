@@ -39,7 +39,8 @@ solvers = Dict(
   ),
   :cannoles => nlp -> cannoles(
     nlp,
-    ϵtol = 1e-5,
+    atol = 0.0,
+    rtol = 1e-5,
   ),
 )
 
