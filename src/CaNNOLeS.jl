@@ -55,16 +55,16 @@ end
 
 function ParamCaNNOLeS(
   ::Type{T};
-  ϵM = eps(T),
-  eig_tol = ϵM,
-  δmin = √ϵM,
-  κdec = T(1 // 3),
-  κinc = T(8),
-  κlargeinc = min(T(100), sizeof(T) * 16),
-  ρ0 = ϵM^T(1 / 3),
-  ρmax = min(ϵM^T(-2.0), prevfloat(T(Inf))),
-  ρmin = √ϵM,
-  γA = ϵM^T(1 / 4),
+  ϵM::T = eps(T),
+  eig_tol::T = ϵM,
+  δmin::T = √ϵM,
+  κdec::T = T(1 // 3),
+  κinc::T = T(8),
+  κlargeinc::T = min(T(100), sizeof(T) * 16),
+  ρ0::T = ϵM^T(1 / 3),
+  ρmax::T = min(ϵM^T(-2.0), prevfloat(T(Inf))),
+  ρmin::T = √ϵM,
+  γA::T = ϵM^T(1 / 4),
 ) where {T}
   ParamCaNNOLeS(eig_tol, δmin, κdec, κinc, κlargeinc, ρ0, ρmax, ρmin, γA)
 end
@@ -72,15 +72,15 @@ end
 function update!(
   params::ParamCaNNOLeS{T},
   ϵM::T;
-  eig_tol = ϵM,
-  δmin = √ϵM,
-  κdec = T(1 // 3),
-  κinc = T(8),
-  κlargeinc = min(T(100), sizeof(T) * 16),
-  ρ0 = ϵM^T(1 / 3),
-  ρmax = min(ϵM^T(-2.0), prevfloat(T(Inf))),
-  ρmin = √ϵM,
-  γA = ϵM^T(1 / 4),
+  eig_tol::T = ϵM,
+  δmin::T = √ϵM,
+  κdec::T = T(1 // 3),
+  κinc::T = T(8),
+  κlargeinc::T = min(T(100), sizeof(T) * 16),
+  ρ0::T = ϵM^T(1 / 3),
+  ρmax::T = min(ϵM^T(-2.0), prevfloat(T(Inf))),
+  ρmin::T = √ϵM,
+  γA::T = ϵM^T(1 / 4),
 ) where {T}
   params.eig_tol = eig_tol
   params.δmin = δmin
@@ -119,22 +119,22 @@ or even pre-allocate the output:
     solve!(solver, nls, stats; kwargs...)
 
 # Arguments
-- `nls :: AbstractNLSModel`: nonlinear least-squares model created using `NLPModels`.
+- `nls :: AbstractNLSModel{T, V}`: nonlinear least-squares model created using `NLPModels`.
 
 # Keyword arguments 
 - `x::AbstractVector = nls.meta.x0`: the initial guess;
-- `λ::AbstractVector = eltype(x)[]`: the initial Lagrange multiplier;
+- `λ::AbstractVector = T[]`: the initial Lagrange multiplier;
 - `method::Symbol = :Newton`: available methods `:Newton, :LM, :Newton_noFHess`, and `:Newton_vanishing`;
 - `linsolve::Symbol = :ma57`: solver to compute LDLt factorization. Available methods are: `:ma57`, `:ldlfactorizations`;
 - `max_eval::Real = 100000`: maximum number of evaluations computed by `neval_residual(nls) + neval_cons(nls)`;
 - `max_time::Float64 = 30.0`: maximum time limit in seconds;
 - `max_inner::Int = 10000`: maximum number of inner iterations;
-- `ϵtol::Real = √eps(eltype(x))`: stopping tolerance;
+- `ϵtol::Real = √eps(T)`: stopping tolerance;
 - `Fatol::T = √eps(T)`: absolute tolerance on the residual;
 - `Frtol::T = eps(T)`: relative tolerance on the residual, the algorithm stops when ‖F(xᵏ)‖ ≤ Fatol + Frtol * ‖F(x⁰)‖  and ‖c(xᵏ)‖∞ ≤ √ϵtol;
 - `verbose::Int = 0`: if > 0, display iteration details every `verbose` iteration;
 - `always_accept_extrapolation::Bool = false`: if `true`, run even if the extrapolation step fails;
-- `δdec::Real = eltype(x)(0.1)`: reducing factor on the parameter `δ`.
+- `δdec::Real = T(0.1)`: reducing factor on the parameter `δ`.
 
 The algorithm stops when ``‖c(xᵏ)‖∞ ≤ ϵtol`` and ``‖∇F(xᵏ)ᵀF(xᵏ) - ∇c(xᵏ)ᵀλᵏ‖ ≤ ϵtol * max(1, ‖λᵏ‖ / 100ncon)``.
 
@@ -381,29 +381,28 @@ end
 end
 
 function SolverCore.solve!(
-  solver::CaNNOLeSSolver,
-  nls::AbstractNLSModel,
-  stats::GenericExecutionStats;
+  solver::CaNNOLeSSolver{Ti, T, V, F},
+  nls::AbstractNLSModel{T, V},
+  stats::GenericExecutionStats{T, V, V};
   callback = (args...) -> nothing,
-  x::AbstractVector = nls.meta.x0,
-  λ::AbstractVector = eltype(x)[],
+  x::V = nls.meta.x0,
+  λ::V = T[],
   method::Symbol = :Newton,
   max_eval::Real = 100000,
   max_time::Real = 30.0,
   max_inner::Int = 10000,
-  ϵtol::Real = √eps(eltype(x)),
-  Fatol::Real = √eps(eltype(x)),
-  Frtol::Real = eps(eltype(x)),
+  ϵtol::Real = √eps(T),
+  Fatol::Real = √eps(T),
+  Frtol::Real = eps(T),
   verbose::Integer = 0,
   always_accept_extrapolation::Bool = false,
-  δdec::Real = eltype(x)(0.1),
-)
+  δdec::T = T(0.1),
+) where {Ti, T, V, F}
   reset!(stats)
   start_time = time()
 
   _check_available_method(method)
   merit = :auglag
-  T = eltype(x)
 
   nvar = nls.meta.nvar
   nequ = nls_meta(nls).nequ
@@ -428,7 +427,7 @@ function SolverCore.solve!(
 
   # Shorter function definitions
   F!(x, Fx) = residual!(nls, x, Fx)
-  crhs = T.(nls.meta.lcon)
+  crhs = nls.meta.lcon
   c!(x, cx) =
     if ncon == 0
       crhs
@@ -677,7 +676,7 @@ function SolverCore.solve!(
 
       if method == :LM
         Ared = norm(Fx)^2 - norm(Ft)^2
-        Pred = norm(Fx)^2 - (α == 0.0 ? norm(Fx + Jx * dx)^2 : norm(Fx + α * Jx * dx)^2)
+        Pred = norm(Fx)^2 - (α == 0 ? norm(Fx + Jx * dx)^2 : norm(Fx + α * Jx * dx)^2)
         if Ared / Pred > 0.75
           damp /= 10
         elseif Ared / Pred < 0.25
@@ -937,7 +936,7 @@ function newton_system!(
 end
 
 function line_search(
-  x,
+  x::AbstractVector{T},
   r,
   λ,
   dx,
@@ -961,8 +960,7 @@ function line_search(
   trial_computed,
   merit,
   params,
-)
-  T = eltype(x)
+) where {T}
   Dϕ = dot(Jx' * Fx, dx) - dot(dx, Jcx' * (λ - cx / δ))
 
   if length(λ) > 0

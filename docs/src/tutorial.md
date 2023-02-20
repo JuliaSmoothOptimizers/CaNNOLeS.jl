@@ -20,7 +20,7 @@ Find below a list of the main options of `cannoles`.
 ```
 | Parameters           | Type          | Default         | Description                                        |
 | -------------------- | ------------- | --------------- | -------------------------------------------------- |
-| ϵtol                 | AbstractFloat | √eps(eltype(x)) | tolerance.                                         |
+| ϵtol                 | AbstractFloat | √eps(T)         | tolerance.                                         |
 | unbounded_threshold  | AbstractFloat | -1e5            | below this threshold the problem is unbounded.     |
 | max_eval             | Integer       | 100000          | evaluation limit, e.g. `neval_residual(nls) + neval_cons(nls) > max_eval` |
 | max_time             | AbstractFloat | 30.             | maximum number of seconds.                         |
@@ -33,12 +33,12 @@ Find below a list of the main options of `cannoles`.
 | Parameters                  | Type           | Default           | Description                                        |
 | --------------------------- | -------------- | ----------------- | -------------------------------------------------- |
 | x                           | AbstractVector | copy(nls.meta.x0) | initial guess. |
-| λ                           | AbstractVector | eltype(x)[]       | initial guess for the Lagrange mutlipliers. |
+| λ                           | AbstractVector | T[]               | initial guess for the Lagrange mutlipliers. |
 | method                      | Symbol         | :Newton           | method to compute direction, `:Newton`, `:LM`, `:Newton_noFHess`, or `:Newton_vanishing`. |
 | linsolve                    | Symbol         | :ma57             | solver use to compute the factorization: `:ma57`, `:ma97`, `:ldlfactorizations` |
 | check_small_residual        | Bool           | false             | |
 | always_accept_extrapolation | Bool           | false             | |
-| δdec                        | Real           | eltype(x)(0.1)    | |
+| δdec                        | Real           | T(0.1)            | |
 ```
 
 ## Examples
