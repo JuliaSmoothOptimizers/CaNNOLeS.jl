@@ -6,6 +6,7 @@ using LinearAlgebra, Logging, SparseArrays
 
 # JSO packages
 using HSL, Krylov, LDLFactorizations, LinearOperators, NLPModels, SolverCore
+using SolverCore: eval_fun
 
 function __init__()
   global available_linsolvers = [:ldlfactorizations]
@@ -97,10 +98,6 @@ import SolverCore.solve!
 export cannoles, CaNNOLeSSolver, solve!
 
 include("solver_types.jl")
-
-import SolverCore.eval_fun
-
-SolverCore.eval_fun(nls::AbstractNLSModel) = neval_residual(nls) + neval_cons(nls)
 
 """
     cannoles(nls)
