@@ -545,15 +545,7 @@ function SolverCore.solve!(
       ),
     )
     @info log_row(
-      Any[
-        0,
-        eval_fun(nls),
-        fx,
-        0.0,
-        normdual,
-        norm(primal[1:nequ]),
-        norm(primal[(nequ + 1):end]),
-      ],
+      Any[0, eval_fun(nls), fx, 0.0, normdual, norm(primal[1:nequ]), norm(primal[(nequ + 1):end])],
     )
   end
 
