@@ -507,7 +507,7 @@ function SolverCore.solve!(
   dual = solver.dual .= Jxtr .- Jcxtλ
   primal = solver.primal
   primal[1:nequ] .= Fx .- r
-  primal[nequ:end] .= cx
+  primal[(nequ + 1):end] .= cx
 
   rhs = solver.rhs
 
@@ -896,7 +896,7 @@ function optimality_check_small_residual!(
   normdual = norm(dual, Inf)
   nequ = length(r)
   primal[1:nequ] .= zero(T)
-  primal[nequ:end] .= cx
+  primal[(nequ + 1):end] .= cx
   normprimal = norm(cx, Inf)
   return normprimal, normdual
 end
