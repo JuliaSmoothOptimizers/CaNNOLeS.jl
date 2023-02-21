@@ -905,8 +905,8 @@ end
 Return `true` if `x` contains `NaN` or `Inf`.
 """
 function check_nan_inf(x)
-  for i = 1:length(x)
-    if isnan(x[i]) || isinf(x)
+  for i in eachindex(x)
+    if isnan(x[i]) || isinf(x[i])
       return true
     end
   end
