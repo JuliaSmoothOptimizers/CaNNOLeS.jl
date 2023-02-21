@@ -506,7 +506,7 @@ function SolverCore.solve!(
 
   smax = T(100.0)
   ϵF = Fatol + Frtol * 2 * √fx # fx = 0.5‖F(x)‖²
-  ϵtol= atol + rtol * normdual
+  ϵtol = atol + rtol * normdual
   ϵc = sqrt(ϵtol)
 
   # Small residual
