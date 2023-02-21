@@ -639,13 +639,14 @@ function SolverCore.solve!(
         end
 
         # on first time, μnew = μ⁺
-        rhs .= [dual; primal]
+        rhs[1:nvar] .= dual
+        rhs[(nvar + 1):end] .= primal
         d, newton_success, ρ, ρold, nfacti =
           newton_system!(d, nvar, nequ, ncon, rhs, LDLT, ρold, params)
         nfact += nfacti
         nlinsolve += 1
 
-        if ρ > params.ρmax || !newton_success || any(isinf.(d)) || any(isnan.(d)) || fx ≥ T(1e60) # Error on hs70
+        if ρ > params.ρmax || !newton_success || check_nan_inf(d) || fx ≥ T(1e60) # Error on hs70
           internal_msg = if ρ > params.ρmax
             "ρ → ∞"
           elseif !newton_success
@@ -661,21 +662,21 @@ function SolverCore.solve!(
           break
         end
 
-        dλ .= -d[nvar .+ nequ .+ (1:ncon)]
+        dλ .= .-view(d, (nvar + nequ + 1):(nvar + nequ + ncon))
       end # inner_iter != 1
       ### End of System solution
 
       α = zero(T) # For the log
       if inner_iter == 0
         ϵk = max(min(1e3 * δ, 99 * ϵk / 100), 9 * ϵk / 10)
-        xt .= x + dx
-        rt .= r + dr
+        xt .= x .+ dx
+        rt .= r .+ dr
 
         Mdλ = T(1e4)
         if norm(dλ) > Mdλ
-          dλ .= dλ * Mdλ / norm(dλ)
+          dλ .= dλ .* Mdλ ./ norm(dλ)
         end
-        λt .= λ + dλ
+        λt .= λ .+ dλ
         F!(xt, Ft)
         c!(xt, ct)
       else
@@ -709,7 +710,7 @@ function SolverCore.solve!(
         nbk += nbki
 
         rt .= Ft
-        λt .= λ - cx ./ δ       # Safe if ncon = 0 and δ = 0.0
+        λt .= λ .- cx ./ δ       # Safe if ncon = 0 and δ = 0.0
       end
 
       if method == :LM
@@ -729,8 +730,11 @@ function SolverCore.solve!(
         Jct.vals .= Jct_vals
       end
 
-      dual .= Jt' * rt - Jct' * λt
-      primal .= [Ft - rt; ct]
+      mul!(Jxtr, Jt', rt)
+      mul!(Jcxtλ, Jct', λt)
+      dual .= Jxtr .- Jcxtλ
+      primal[1:nequ] .= Ft .- rt
+      primal[(nequ + 1):end] .= ct
 
       # dual, primal and comp overwrite the previous vectors, but normdualhat doesn't
       normdualhat = norm(dual, Inf)
@@ -757,7 +761,9 @@ function SolverCore.solve!(
       if combined_optimality_hat <= T(0.99) * combined_optimality + ϵk
         λ .= λt
       else
-        dual .= Jx' * r - Jcx' * λ
+        mul!(Jxtr, Jx', r)
+        mul!(Jcxtλ, Jcx', λ)
+        dual .= Jxtr .- Jcxtλ
       end
 
       if ncon > 0 &&
@@ -853,7 +859,7 @@ function SolverCore.solve!(
     set_status!(stats, status)
 
     set_objective!(stats, dot(Fx, Fx) / 2)
-    set_residuals!(stats, norm(primal[(nequ + 1):end]), normdual)
+    set_residuals!(stats, norm(cx), normdual)
     set_constraint_multipliers!(stats, λ)
     set_solution!(stats, x)
     callback(nls, solver, stats)
