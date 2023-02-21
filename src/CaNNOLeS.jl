@@ -126,9 +126,10 @@ or even pre-allocate the output:
 - `λ::AbstractVector = T[]`: the initial Lagrange multiplier;
 - `method::Symbol = :Newton`: available methods `:Newton, :LM, :Newton_noFHess`, and `:Newton_vanishing`;
 - `linsolve::Symbol = :ma57`: solver to compute LDLt factorization. Available methods are: `:ma57`, `:ldlfactorizations`;
+- `max_iter::Int = -1`: maximum number of iterations;
 - `max_eval::Real = 100000`: maximum number of evaluations computed by `neval_residual(nls) + neval_cons(nls)`;
 - `max_time::Float64 = 30.0`: maximum time limit in seconds;
-- `max_inner::Int = 10000`: maximum number of inner iterations;
+- `max_inner::Int = 10000`: maximum number of inner iterations (return stalled if this limit is reached);
 - `atol::T = √eps(T)`: absolute tolerance;
 - `rtol::T = √eps(T)`: relative tolerance: the algorithm uses `ϵtol := atol + rtol * ‖∇F(x⁰)ᵀF(x⁰) - ∇c(x⁰)ᵀλ⁰‖`;
 - `Fatol::T = √eps(T)`: absolute tolerance on the residual;
@@ -389,6 +390,7 @@ function SolverCore.solve!(
   x::V = nls.meta.x0,
   λ::V = T[],
   method::Symbol = :Newton,
+  max_iter::Int = -1,
   max_eval::Real = 100000,
   max_time::Real = 30.0,
   max_inner::Int = 10000,
@@ -503,7 +505,6 @@ function SolverCore.solve!(
     sd = dual_scaling(λ, smax)
     first_order = max(normdual / sd, normprimal) <= ϵtol
   end
-  solved = first_order
   elapsed_time = time() - start_time
   tired = eval_fun(nls) > max_eval || elapsed_time > max_time
   broken = false
@@ -525,13 +526,12 @@ function SolverCore.solve!(
   status = SolverCore.get_status(
     nls;
     elapsed_time = elapsed_time,
-    iter = inner_iter,
     optimal = first_order,
     small_residual = small_residual,
     exception = broken,
     max_eval = max_eval,
     max_time = max_time,
-    max_iter = max_inner,
+    max_iter = max_iter,
   )
   set_status!(stats, status)
 
@@ -770,8 +770,6 @@ function SolverCore.solve!(
       sd = dual_scaling(λ, smax)
       first_order = max(normdual / sd, normprimal) <= ϵtol
     end
-    solved = first_order
-    tired = eval_fun(nls) > max_eval || elapsed_time > max_time || inner_iter > max_inner
 
     verbose > 0 &&
       mod(stats.iter, verbose) == 0 &&
@@ -788,7 +786,7 @@ function SolverCore.solve!(
           η,
           ρ,
           δ,
-          inner_iter,
+          stats.iter,
           nbk,
         ],
       )
@@ -797,13 +795,14 @@ function SolverCore.solve!(
     status = SolverCore.get_status(
       nls;
       elapsed_time = elapsed_time,
-      iter = inner_iter,
+      iter = stats.iter,
       optimal = first_order,
       small_residual = small_residual,
       exception = broken,
       max_eval = max_eval,
       max_time = max_time,
-      max_iter = max_inner,
+      max_iter = max_iter,
+      stalled = inner_iter > max_inner ≥ 0,
     )
     set_status!(stats, status)
 
