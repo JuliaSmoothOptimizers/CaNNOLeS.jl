@@ -317,7 +317,7 @@ function CaNNOLeSSolver(nls::AbstractNLSModel{T, V}; linsolve::Symbol = :ma57) w
     vals = LDLT.factor.vals
     LDLT
   elseif linsolve == :ldlfactorizations
-    LDLT = LDLFactStruct(rows, cols, vals)
+    LDLT = LDLFactStruct(nvar + nequ + ncon, rows, cols, vals)
     vals = LDLT.vals
     LDLT
   else
@@ -610,39 +610,13 @@ function SolverCore.solve!(
 
       ### System solution
       if inner_iter != 1 || always_accept_extrapolation # If = 1, then extrapolation step failed, and x is not updated
-        if method in [:Newton, :Newton_noFHess, :Newton_vanishing]
-          if method == :Newton || (method == :Newton_vanishing && dot(Fx, Fx) > 1e-8)
-            sI = 1:nnzhF
-            @views hess_coord_residual!(nls, x, r, vals[sI])
-          end
-          sI = nnzhF + nnzhc .+ (1:nnzjF)
-          vals[sI] .= Jx_vals
-          if ncon > 0
-            sI = nnzhF .+ (1:nnzhc)
-            @views hess_coord!(nls, x, -λ, vals[sI], obj_weight = zero(T))
-            sI = nnzhF + nnzhc + nnzjF .+ (1:nnzjc)
-            vals[sI] .= Jcx_vals
-            sI = nnzhF + nnzhc + nnzjF + nnzjc + nequ .+ (1:ncon)
-            vals[sI] = -δ * ones(ncon)
-          end
-          sI = nnzhF + nnzhc + nnzjF + nnzjc + nequ + ncon .+ (1:nvar)
-          vals[sI] .= zero(T)
-          #=
-          elseif method == :LM
-          #Hx = spzeros(nvar, nvar)
-          Λ = [norm(Jx[:,j])^2 for j = 1:nvar] * max(1e-10, min(1e8, damp))
-          #Λ = ones(nvar) * max(1e-10, min(1e8, damp))
-          Hx = spdiagm(0 => Λ)
-          =#
-        else
-          error("No method $method")
-        end
+        prepare_newton_system!(Val(method), vals, nls, x, λ, r, Jx_vals, Jcx_vals, δ, Fx)
 
         # on first time, μnew = μ⁺
         rhs[1:nvar] .= dual
         rhs[(nvar + 1):end] .= primal
         d, newton_success, ρ, ρold, nfacti =
-          newton_system!(d, nvar, nequ, ncon, rhs, LDLT, ρold, params)
+          newton_system!(d, nvar, nequ, ncon, rhs, vals, LDLT, ρold, params)
         nfact += nfacti
         nlinsolve += 1
 
@@ -930,6 +904,86 @@ function dual_scaling(λ::AbstractVector{T}, smax::T) where {T}
   return ncon > 0 ? max(smax, norm(λ, 1) / ncon) / smax : one(T)
 end
 
+#= TODO
+function prepare_newton_system!(
+  Meth::Val{:LM},
+  vals::V,
+  nls::AbstractNLSModel{T, V},
+  x::V,
+  λ::V,
+  r::V,
+  Jx_vals::V,
+  Jcx_vals::V,
+  δ::T,
+  Fx::V,
+) where {T, V}
+  #Hx = spzeros(nvar, nvar)
+  Λ = [norm(Jx[:,j])^2 for j = 1:nvar] * max(1e-10, min(1e8, damp))
+  #Λ = ones(nvar) * max(1e-10, min(1e8, damp))
+  Hx = spdiagm(0 => Λ)
+end
+=#
+
+"""
+    prepare_newton_system!(Val(method), vals, nls, x, λ, r, Jx_vals, Jcx_vals, δ, Fx)
+
+Update the Newton system.
+"""
+function prepare_newton_system!(
+  Meth::Union{Val{:Newton}, Val{:Newton_noFHess}, Val{:Newton_vanishing}},
+  vals::V,
+  nls::AbstractNLSModel{T, V},
+  x::V,
+  λ::V,
+  r::V,
+  Jx_vals::V,
+  Jcx_vals::V,
+  δ::T,
+  Fx::V,
+) where {T, V}
+  nvar, ncon = nls.meta.nvar, nls.meta.ncon
+  nequ = nls.nls_meta.nequ
+  nnzhF, nnzhc = nls.nls_meta.nnzh, ncon > 0 ? nls.meta.nnzh : 0
+  nnzjF, nnzjc = nls.nls_meta.nnzj, nls.meta.nnzj
+
+  update_newton_hessian!(Meth, nls, x, r, vals, Fx)
+
+  sI = nnzhF + nnzhc .+ (1:nnzjF)
+  vals[sI] .= Jx_vals
+  if ncon > 0
+    sI = nnzhF .+ (1:nnzhc)
+    @views hess_coord!(nls, x, λ, vals[sI], obj_weight = zero(T)) # -λ
+    @views vals[sI] .= .-vals[sI]
+    sI = nnzhF + nnzhc + nnzjF .+ (1:nnzjc)
+    vals[sI] .= Jcx_vals
+    sI = nnzhF + nnzhc + nnzjF + nnzjc + nequ .+ (1:ncon)
+    vals[sI] .= -δ
+  end
+  sI = nnzhF + nnzhc + nnzjF + nnzjc + nequ + ncon .+ (1:nvar)
+  vals[sI] .= zero(T)
+  return vals
+end
+
+"""
+    update_newton_hessian!(::Val{method}, nls, x, r, vals, Fx)
+
+Update, if need for `method`, the top-left block with the non-zeros values of the Hessian of the residual.
+For `method=:Newton_vanishing`, this update is skipped if `‖F(xᵏ)‖ ≤ 1e-8`.
+"""
+function update_newton_hessian!(::Val{T}, args...) where {T<:Symbol} end
+
+function update_newton_hessian!(::Val{:Newton}, nls, x, r, vals, Fx)
+  sI = 1:(nls.nls_meta.nnzh)
+  @views hess_coord_residual!(nls, x, r, vals[sI])
+end
+
+function update_newton_hessian!(::Val{:Newton_vanishing}, nls, x, r, vals, Fx)
+  if dot(Fx, Fx) > 1e-8
+    sI = 1:(nls.nls_meta.nnzh)
+    @views hess_coord_residual!(nls, x, r, vals[sI])
+  end
+end
+
 @deprecate newton_system(x, r, λ, Fx, rhs, LDLT, ρold, params, method, linsolve) newton_system(
   length(x),
   length(r),
@@ -941,7 +995,7 @@ end
 )
 
 """
-    newton_system!(d, nvar, nequ, ncon, rhs, LDLT, ρold, params)
+    newton_system!(d, nvar, nequ, ncon, rhs, vals, LDLT, ρold, params)
 
 Compute an LDLt factorization of the (`nvar + nequ + ncon`)-square matrix for the Newton system contained in `LDLT`, i.e., `sparse(LDLT.rows, LDLT.cols, LDLT.vals, N, N)`.
 If the factorization fails, a new factorization is attempted with an increased value for the regularization ρ as long as it is smaller than `params.ρmax`.
@@ -961,6 +1015,7 @@ function newton_system!(
   nequ::Integer,
   ncon::Integer,
   rhs::AbstractVector{T},
+  vals::AbstractVector{T},
   LDLT::LinearSolverStruct,
   ρold::T,
   params::ParamCaNNOLeS{T},
@@ -968,6 +1023,7 @@ function newton_system!(
   nfact = 0
 
   ρ = zero(T)
+  LDLT.vals .= vals
 
   success = try_to_factorize(LDLT, nvar, nequ, ncon, params.eig_tol)
   nfact += 1
@@ -995,11 +1051,7 @@ function newton_system!(
     end
   end
 
-  if success
-    d, solve_success = solve_ldl!(rhs, LDLT.factor, d)
-  else
-    solve_success = false
-  end
+  solve_success = success ? solve_ldl!(rhs, LDLT.factor, d) : false
 
   return d, solve_success, ρ, ρold, nfact
 end
