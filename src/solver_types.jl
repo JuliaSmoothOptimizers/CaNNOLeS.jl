@@ -55,7 +55,7 @@ mutable struct LDLFactStruct{T, Ti <: Integer} <: LinearSolverStruct
   cols::Vector{Ti}
   vals::Vector{T}
   A::Symmetric{T, SparseMatrixCSC{T, Ti}}
-  factor::Union{LDLFactorizations.LDLFactorization, Nothing}
+  factor::LDLFactorizations.LDLFactorization{T, Ti, Ti, Ti}
 end
 
 function set_vals!(LDLT::LDLFactStruct{T, Ti}, vals::Vector{T}) where {T, Ti}
@@ -74,9 +74,6 @@ end
 
 get_vals(LDLT::LinearSolverStruct) = LDLT.vals
 
-function LDLFactStruct(rows, cols, vals)
-  LDLFactStruct(rows, cols, vals, nothing)
-end
 function solve_ldl!(
   rhs::AbstractVector,
   factor::LDLFactorizations.LDLFactorization,
@@ -98,16 +95,12 @@ function try_to_factorize(
   N = nvar + nequ + ncon
   set_vals!(LDLT, vals)
   ldl_factorize!(LDLT.A, LDLT.factor)
-  try
-    pos_eig, zer_eig = 0, 0
-    for i=1:N
-      di = LDLT.factor.d[i]
-      pos_eig += di > eig_tol
-      zer_eig += abs(di) ≤ eig_tol
-    end
-    success = pos_eig == nvar && zer_eig == 0
-    return success
-  catch
-    return false
+  pos_eig, zer_eig = 0, 0
+  for i=1:N
+    di = LDLT.factor.d[i]
+    pos_eig += di > eig_tol
+    zer_eig += abs(di) ≤ eig_tol
   end
+  success = pos_eig == nvar && zer_eig == 0
+  return success
 end
