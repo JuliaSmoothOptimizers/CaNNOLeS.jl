@@ -9,6 +9,13 @@ Compute the LDLt factorization of A = sparse(LDLT.rows, LDLT.cols, LDLT.vals, N,
 """
 function try_to_factorize end
 
+"""
+    success = solve_ldl!(rhs::AbstractVector, factor::Union{Ma57, LDLFactorizations.LDLFactorization}, d::AbstractVector)
+
+Compute the solution of `LDLt d = -rhs`.
+"""
+function solve_ldl! end
+
 if isdefined(HSL, :libhsl_ma57)
   mutable struct MA57Struct <: LinearSolverStruct
     factor::Ma57
@@ -20,8 +27,9 @@ if isdefined(HSL, :libhsl_ma57)
 
   get_vals(LDLT::MA57Struct) = LDLT.factor.vals
   function solve_ldl!(rhs::AbstractVector, factor::Ma57, d::AbstractVector)
-    d .= ma57_solve(factor, -rhs)
-    return d, true
+    d .= ma57_solve(factor, rhs)
+    d .= .-d
+    return true
   end
 
   function try_to_factorize(
@@ -41,28 +49,32 @@ else
   end
 end
 
-mutable struct LDLFactStruct <: LinearSolverStruct
-  rows::Vector{Int}
-  cols::Vector{Int}
-  vals::Vector
+mutable struct LDLFactStruct{T, Ti <: Integer} <: LinearSolverStruct
+  rows::Vector{Ti}
+  cols::Vector{Ti}
+  vals::Vector{T}
+  A::Symmetric{T, SparseMatrixCOO{T, Ti}}
   factor::Union{LDLFactorizations.LDLFactorization, Nothing}
 end
 
-function LDLFactStruct(rows, cols, vals)
-  LDLFactStruct(rows, cols, vals, nothing)
+function LDLFactStruct(N, rows, cols, vals)
+  A = Symmetric(SparseMatrixCOO(N, N, cols, rows, vals), :U)
+  LDLFactStruct(rows, cols, vals, A, nothing)
 end
 
 get_vals(LDLT::LinearSolverStruct) = LDLT.vals
 
-solve_ldl!(::AbstractVector, factor::Nothing, ::AbstractVector) =
-  error("LDLt factorization failed.")
+function LDLFactStruct(rows, cols, vals)
+  LDLFactStruct(rows, cols, vals, nothing)
+end
 function solve_ldl!(
   rhs::AbstractVector,
   factor::LDLFactorizations.LDLFactorization,
   d::AbstractVector,
 )
-  d .= -(factor \ rhs)
-  return d, true
+  ldiv!(d, factor, rhs)
+  d .= .-d
+  return true
 end
 
 function try_to_factorize(
@@ -73,15 +85,17 @@ function try_to_factorize(
   eig_tol::Real,
 )
   N = nvar + nequ + ncon
-  A = SparseMatrixCOO(N, N, LDLT.rows, LDLT.cols, LDLT.vals)
-  A = Matrix(Symmetric(A, :L))
+  LDLT.A.data.vals .= LDLT.vals
   try
-    M = ldl(A)
-    D = diag(M.D)
-    pos_eig = count(D .> eig_tol)
-    zer_eig = count(abs.(D) .≤ eig_tol)
+    M = ldl(Matrix(LDLT.A)) # allocate
+    pos_eig, zer_eig = 0, 0
+    for i=1:N
+      di = M.D[i, i]
+      pos_eig += di > eig_tol
+      zer_eig += abs(di) ≤ eig_tol
+    end
     success = pos_eig == nvar && zer_eig == 0
-    LDLT.factor = M
+    LDLT.factor = M # allocate
     return success
   catch
     return false
