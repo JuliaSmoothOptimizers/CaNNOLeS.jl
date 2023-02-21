@@ -189,6 +189,7 @@ mutable struct CaNNOLeSSolver{Ti, T, V, F} <: AbstractOptimizationSolver
   x::V
   cx::V
   r::V
+  Fx::V
   d::V
   dλ::V
   rhs::V
@@ -200,6 +201,7 @@ mutable struct CaNNOLeSSolver{Ti, T, V, F} <: AbstractOptimizationSolver
   ct::V
 
   Jxtr::V
+  Jcxtλ::V
   dual::V
   primal::V
 
@@ -235,6 +237,7 @@ function CaNNOLeSSolver(nls::AbstractNLSModel{T, V}; linsolve::Symbol = :ma57) w
   x = similar(nls.meta.x0)
   cx = zeros(T, ncon)
   r = V(undef, nequ)
+  Fx = V(undef, nequ)
   d = zeros(T, nvar + nequ + ncon)
   dλ = zeros(T, ncon)
   rhs = zeros(T, nvar + nequ + ncon)
@@ -246,6 +249,7 @@ function CaNNOLeSSolver(nls::AbstractNLSModel{T, V}; linsolve::Symbol = :ma57) w
   ct = V(undef, ncon)
 
   Jxtr = V(undef, nvar)
+  Jcxtλ = V(undef, nvar)
   dual = V(undef, nvar)
   primal = V(undef, nequ + ncon)
 
@@ -329,6 +333,7 @@ function CaNNOLeSSolver(nls::AbstractNLSModel{T, V}; linsolve::Symbol = :ma57) w
     x,
     cx,
     r,
+    Fx,
     d,
     dλ,
     rhs,
@@ -338,6 +343,7 @@ function CaNNOLeSSolver(nls::AbstractNLSModel{T, V}; linsolve::Symbol = :ma57) w
     Ft,
     ct,
     Jxtr,
+    Jcxtλ,
     dual,
     primal,
     rows,
@@ -460,8 +466,8 @@ function SolverCore.solve!(
   end
 
   # Initial values
-  Fx = residual(nls, x)
-  if any(isnan.(Fx)) || any(isinf.(Fx))
+  Fx = F!(x, solver.Fx)
+  if check_nan_inf(Fx)
     error("Initial point gives Inf or Nan")
   end
   fx = dot(Fx, Fx) / 2
@@ -483,7 +489,8 @@ function SolverCore.solve!(
   dr = view(d, nvar .+ (1:nequ))
   dλ = solver.dλ
 
-  Jxtr = solver.Jxtr .= Jx' * r
+  Jxtr = solver.Jxtr
+  mul!(Jxtr, Jx', r)
 
   elapsed_time = 0.0
 
@@ -494,10 +501,13 @@ function SolverCore.solve!(
       λ = ones(T, ncon)
     end
   end
-  @debug("Starting values", x, Fx, λ)
 
-  dual = solver.dual .= Jxtr - Jcx' * λ
-  primal = solver.primal .= [Fx - r; cx]
+  Jcxtλ = solver.Jcxtλ
+  mul!(Jcxtλ, Jcx', λ)
+  dual = solver.dual .= Jxtr .- Jcxtλ
+  primal = solver.primal
+  primal[1:nequ] .= Fx .- r
+  primal[nequ:end] .= cx
 
   rhs = solver.rhs
 
@@ -506,7 +516,7 @@ function SolverCore.solve!(
 
   smax = T(100.0)
   ϵF = Fatol + Frtol * 2 * √fx # fx = 0.5‖F(x)‖²
-  ϵtol= atol + rtol * normdual
+  ϵtol = atol + rtol * normdual
   ϵc = sqrt(ϵtol)
 
   # Small residual
@@ -514,8 +524,19 @@ function SolverCore.solve!(
   sd = dual_scaling(λ, smax)
   first_order = max(normdual / sd, normprimal) <= ϵtol
   if small_residual && !first_order
-    normprimal, normdual =
-      optimality_check_small_residual!(cgls_solver, r, λ, dual, primal, Fx, cx, Jx, Jcx, Jxtr)
+    normprimal, normdual = optimality_check_small_residual!(
+      cgls_solver,
+      r,
+      λ,
+      dual,
+      primal,
+      Fx,
+      cx,
+      Jx,
+      Jcx,
+      Jxtr,
+      Jcxtλ,
+    )
     sd = dual_scaling(λ, smax)
     first_order = max(normdual / sd, normprimal) <= ϵtol
   end
@@ -566,7 +587,7 @@ function SolverCore.solve!(
   end
 
   set_objective!(stats, dot(Fx, Fx) / 2)
-  set_residuals!(stats, norm(primal[(nequ + 1):end]), normdual)
+  set_residuals!(stats, norm(cx), normdual)
   set_solution!(stats, x)
   set_constraint_multipliers!(stats, λ)
   callback(nls, solver, stats)
@@ -779,8 +800,19 @@ function SolverCore.solve!(
     first_order = max(normdual / sd, normprimal) <= ϵtol
     small_residual = (2 * √fx <= ϵF) && norm(cx) ≤ ϵc
     if small_residual && !first_order
-      normprimal, normdual =
-        optimality_check_small_residual!(cgls_solver, r, λ, dual, primal, Fx, cx, Jx, Jcx, Jxtr)
+      normprimal, normdual = optimality_check_small_residual!(
+        cgls_solver,
+        r,
+        λ,
+        dual,
+        primal,
+        Fx,
+        cx,
+        Jx,
+        Jcx,
+        Jxtr,
+        Jcxtλ,
+      )
       sd = dual_scaling(λ, smax)
       first_order = max(normdual / sd, normprimal) <= ϵtol
     end
@@ -837,7 +869,7 @@ function SolverCore.solve!(
 end
 
 """
-    normprimal, normdual = optimality_check_small_residual!(cgls_solver, r, λ, dual, primal, Fx, cx, Jx, Jcx, Jxtr)
+    normprimal, normdual = optimality_check_small_residual!(cgls_solver, r, λ, dual, primal, Fx, cx, Jx, Jcx, Jxtr, Jcxtλ)
 
 Compute the norm of the primal and dual residuals.
 The values of `r`, `Jxtr`, `λ`, `primal` and `dual` are updated.
@@ -853,17 +885,32 @@ function optimality_check_small_residual!(
   Jx,
   Jcx,
   Jxtr::V,
+  Jcxtλ::V,
 ) where {T, V}
   r .= Fx
-  Jxtr = Jx' * r
+  mul!(Jxtr, Jx', r)
   Krylov.solve!(cgls_solver, Jcx', Jxtr)
   λ .= cgls_solver.x # Armand 2012
-  dual .= Jxtr - Jcx' * λ
+  mul!(Jcxtλ, Jcx', λ)
+  dual .= Jxtr .- Jcxtλ
   normdual = norm(dual, Inf)
   nequ = length(r)
-  primal .= [zeros(T, nequ); cx]
+  primal[1:nequ] .= zero(T)
+  primal[nequ:end] .= cx
   normprimal = norm(cx, Inf)
   return normprimal, normdual
+end
+
+"""
+Return `true` if `x` contains `NaN` or `Inf`.
+"""
+function check_nan_inf(x)
+  for i = 1:length(x)
+    if isnan(x[i]) || isinf(x)
+      return true
+    end
+  end
+  return false
 end
 
 """
