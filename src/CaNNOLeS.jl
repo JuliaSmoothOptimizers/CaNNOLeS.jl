@@ -2,10 +2,10 @@
 module CaNNOLeS
 
 # stdlib
-using LinearAlgebra, Logging, SparseArrays
+using LinearAlgebra, Logging
 
 # JSO packages
-using HSL, Krylov, LDLFactorizations, LinearOperators, NLPModels, SolverCore
+using HSL, Krylov, LDLFactorizations, LinearOperators, NLPModels, SolverCore, SparseMatricesCOO
 using SolverCore: eval_fun
 
 function __init__()
@@ -211,11 +211,15 @@ mutable struct CaNNOLeSSolver{Ti, T, V, F} <: AbstractOptimizationSolver
   Jx_rows::Vector{Ti}
   Jx_cols::Vector{Ti}
   Jx_vals::V
+  Jx::SparseMatrixCOO{T, Ti}
   Jt_vals::V
+  Jt::SparseMatrixCOO{T, Ti}
   Jcx_rows::Vector{Ti}
   Jcx_cols::Vector{Ti}
   Jcx_vals::V
+  Jcx::SparseMatrixCOO{T, Ti}
   Jct_vals::V
+  Jct::SparseMatrixCOO{T, Ti}
 
   LDLT::F
   cgls_solver::CglsSolver{T, T, V}
@@ -256,10 +260,14 @@ function CaNNOLeSSolver(nls::AbstractNLSModel{T, V}; linsolve::Symbol = :ma57) w
   vals = V(undef, nnzNS)
   Jx_rows, Jx_cols = jac_structure_residual(nls)
   Jx_vals = V(undef, nls.nls_meta.nnzj)
+  Jx = SparseMatrixCOO(nequ, nvar, Jx_rows, Jx_cols, Jx_vals)
   Jt_vals = V(undef, nls.nls_meta.nnzj)
+  Jt = SparseMatrixCOO(nequ, nvar, Jx_rows, Jx_cols, Jt_vals)
   Jcx_rows, Jcx_cols = jac_structure(nls)
   Jcx_vals = V(undef, nls.meta.nnzj)
+  Jcx = SparseMatrixCOO(ncon, nvar, Jcx_rows, Jcx_cols, Jcx_vals)
   Jct_vals = V(undef, nls.meta.nnzj)
+  Jct = SparseMatrixCOO(ncon, nvar, Jcx_rows, Jcx_cols, Jct_vals)
 
   # Allocation and structure of Newton system matrix
   # G = [Hx + ρI; Jx -I; Jcx 0 -δI]
@@ -340,11 +348,15 @@ function CaNNOLeSSolver(nls::AbstractNLSModel{T, V}; linsolve::Symbol = :ma57) w
     Jx_rows,
     Jx_cols,
     Jx_vals,
+    Jx,
     Jt_vals,
+    Jt,
     Jcx_rows,
     Jcx_cols,
     Jcx_vals,
+    Jcx,
     Jct_vals,
+    Jct,
     LDLT,
     cgls_solver,
     params,
@@ -425,6 +437,7 @@ function SolverCore.solve!(
   Jx_vals, Jt_vals = solver.Jx_vals, solver.Jt_vals
   Jcx_rows, Jcx_cols = solver.Jcx_rows, solver.Jcx_cols
   Jcx_vals, Jct_vals = solver.Jcx_vals, solver.Jct_vals
+  Jt, Jct = solver.Jt, solver.Jct
   vals = solver.vals
   LDLT = solver.LDLT
   cgls_solver = solver.cgls_solver
@@ -454,14 +467,15 @@ function SolverCore.solve!(
   fx = dot(Fx, Fx) / 2
 
   jac_coord_residual!(nls, x, Jx_vals)
-  Jx = sparse(Jx_rows, Jx_cols, Jx_vals, nequ, nvar)
+  Jx = solver.Jx
+  Jx.vals .= Jx_vals
 
-  cx = solver.cx
+  cx, Jcx = solver.cx, solver.Jcx
   c!(x, cx)
   if ncon > 0
     jac_coord!(nls, x, Jcx_vals)
+    Jcx.vals .= Jcx_vals
   end
-  Jcx = ncon > 0 ? sparse(Jcx_rows, Jcx_cols, Jcx_vals, ncon, nvar) : spzeros(ncon, nvar)
 
   r = solver.r .= Fx
   d = solver.d
@@ -688,11 +702,11 @@ function SolverCore.solve!(
       end
 
       jac_coord_residual!(nls, xt, Jt_vals)
-      Jt = sparse(Jx_rows, Jx_cols, Jt_vals, nequ, nvar)
+      Jt.vals .= Jt_vals
       if ncon > 0
         jac_coord!(nls, xt, Jct_vals)
+        Jct.vals .= Jct_vals
       end
-      Jct = ncon > 0 ? sparse(Jcx_rows, Jcx_cols, Jct_vals, ncon, nvar) : spzeros(ncon, nvar)
 
       dual .= Jt' * rt - Jct' * λt
       primal .= [Ft - rt; ct]
@@ -711,10 +725,10 @@ function SolverCore.solve!(
         Fx .= Ft
         fx = dot(Fx, Fx) / 2
         cx .= ct
-        Jx .= Jt
+        Jx.vals .= Jt.vals
         Jx_vals .= Jt_vals
         if ncon > 0
-          Jcx .= Jct
+          Jcx.vals .= Jct.vals
           Jcx_vals .= Jct_vals
         end
       end
