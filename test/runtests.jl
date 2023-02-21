@@ -135,14 +135,14 @@ end
   )
   stats = GenericExecutionStats(nls)
   solver = CaNNOLeSSolver(nls, linsolve = :ldlfactorizations)
-  solve!(solver, nls, stats, atol = 1e-15, Fatol = 1e-6, Frtol = 0.0)
+  solve!(solver, nls, stats, atol = 1e-15, rtol = 0.0, Fatol = 1e-6, Frtol = 0.0)
   @test stats.status_reliable && stats.status == :small_residual
   @test stats.objective_reliable && isapprox(stats.objective, 0, atol = 1e-6)
 
   reset!(nls)
   stats = GenericExecutionStats(nls)
   solver = CaNNOLeSSolver(nls)
-  solve!(solver, nls, stats, x = [0.99999, 0.99999], atol = 1e-15, Fatol = 1e-6, Frtol = 0.0)
+  solve!(solver, nls, stats, x = [0.99999, 0.99999], atol = 1e-15, rtol = 0.0, Fatol = 1e-6, Frtol = 0.0)
   @test stats.status_reliable && stats.status == :small_residual
   @test stats.objective_reliable && isapprox(stats.objective, 0, atol = 1e-6)
 end

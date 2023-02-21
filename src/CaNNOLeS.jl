@@ -2,7 +2,7 @@
 module CaNNOLeS
 
 # stdlib
-using LinearAlgebra, Logging
+using LinearAlgebra, Logging, SparseArrays
 
 # JSO packages
 using HSL, Krylov, LDLFactorizations, LinearOperators, NLPModels, SolverCore, SparseMatricesCOO
@@ -262,6 +262,7 @@ function CaNNOLeSSolver(nls::AbstractNLSModel{T, V}; linsolve::Symbol = :ma57) w
   rows = Vector{Ti}(undef, nnzNS)
   cols = Vector{Ti}(undef, nnzNS)
   vals = V(undef, nnzNS)
+  vals .= one(T)
   Jx_rows, Jx_cols = jac_structure_residual(nls)
   Jx_vals = V(undef, nls.nls_meta.nnzj)
   Jx = SparseMatrixCOO(nequ, nvar, Jx_rows, Jx_cols, Jx_vals)
@@ -1023,9 +1024,8 @@ function newton_system!(
   nfact = 0
 
   ρ = zero(T)
-  LDLT.vals .= vals
 
-  success = try_to_factorize(LDLT, nvar, nequ, ncon, params.eig_tol)
+  success = try_to_factorize(LDLT, vals, nvar, nequ, ncon, params.eig_tol)
   nfact += 1
 
   vals = get_vals(LDLT)
@@ -1034,14 +1034,14 @@ function newton_system!(
   if !success
     ρ = ρold == 0 ? params.ρ0 : max(params.ρmin, params.κdec * ρold)
     vals[sI] .= ρ
-    success = try_to_factorize(LDLT, nvar, nequ, ncon, params.eig_tol)
+    success = try_to_factorize(LDLT, vals, nvar, nequ, ncon, params.eig_tol)
     nfact += 1
     ρiter = 0
     while !success && ρ <= params.ρmax
       ρ = ρold == 0 ? params.κlargeinc * ρ : params.κinc * ρ
       if ρ <= params.ρmax
         vals[sI] .= ρ
-        success = try_to_factorize(LDLT, nvar, nequ, ncon, params.eig_tol)
+        success = try_to_factorize(LDLT, vals, nvar, nequ, ncon, params.eig_tol)
         nfact += 1
       end
       ρiter += 1
