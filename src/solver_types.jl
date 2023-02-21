@@ -73,7 +73,7 @@ function try_to_factorize(
   eig_tol::Real,
 )
   N = nvar + nequ + ncon
-  A = sparse(LDLT.rows, LDLT.cols, LDLT.vals, N, N)
+  A = SparseMatrixCOO(N, N, LDLT.rows, LDLT.cols, LDLT.vals)
   A = Matrix(Symmetric(A, :L))
   try
     M = ldl(A)
