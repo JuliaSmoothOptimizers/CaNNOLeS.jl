@@ -611,7 +611,7 @@ function SolverCore.solve!(
 
       ### System solution
       if inner_iter != 1 || always_accept_extrapolation # If = 1, then extrapolation step failed, and x is not updated
-        prepare_newton_system!(Val(method), vals, nls, x, λ, r, Jx_vals, Jcx_vals, δ, Fx)
+        @inline prepare_newton_system!(Val(method), vals, nls, x, λ, r, Jx_vals, Jcx_vals, δ, Fx)
 
         # on first time, μnew = μ⁺
         rhs[1:nvar] .= dual
