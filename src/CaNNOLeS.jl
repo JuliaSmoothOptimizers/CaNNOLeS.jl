@@ -971,7 +971,7 @@ end
 Update, if need for `method`, the top-left block with the non-zeros values of the Hessian of the residual.
 For `method=:Newton_vanishing`, this update is skipped if `‖F(xᵏ)‖ ≤ 1e-8`.
 """
-function update_newton_hessian!(::Val{T}, args...) where {T<:Symbol} end
+function update_newton_hessian!(::Val{T}, args...) where {T <: Symbol} end
 
 function update_newton_hessian!(::Val{:Newton}, nls, x, r, vals, Fx)
   sI = 1:(nls.nls_meta.nnzh)

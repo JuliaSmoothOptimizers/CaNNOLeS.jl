@@ -96,7 +96,7 @@ function try_to_factorize(
   set_vals!(LDLT, vals)
   ldl_factorize!(LDLT.A, LDLT.factor)
   pos_eig, zer_eig = 0, 0
-  for i=1:N
+  for i = 1:N
     di = LDLT.factor.d[i]
     pos_eig += di > eig_tol
     zer_eig += abs(di) ≤ eig_tol
