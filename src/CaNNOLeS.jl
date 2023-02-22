@@ -121,7 +121,7 @@ or even pre-allocate the output:
 # Arguments
 - `nls :: AbstractNLSModel{T, V}`: nonlinear least-squares model created using `NLPModels`.
 
-# Keyword arguments 
+# Keyword arguments
 - `x::AbstractVector = nls.meta.x0`: the initial guess;
 - `λ::AbstractVector = T[]`: the initial Lagrange multiplier;
 - `method::Symbol = :Newton`: available methods `:Newton, :LM, :Newton_noFHess`, and `:Newton_vanishing`;
@@ -229,7 +229,11 @@ mutable struct CaNNOLeSSolver{Ti, T, V, F} <: AbstractOptimizationSolver
   params::ParamCaNNOLeS{T}
 end
 
-function CaNNOLeSSolver(nls::AbstractNLSModel{T, V}; linsolve::Symbol = :ma57) where {T, V}
+function CaNNOLeSSolver(
+  nls::AbstractNLSModel{T, V};
+  linsolve::Symbol = :ma57,
+  method::Symbol = :Newton,
+) where {T, V}
   nvar = nls.meta.nvar
   nequ = nls_meta(nls).nequ
   ncon = nls.meta.ncon
@@ -253,11 +257,13 @@ function CaNNOLeSSolver(nls::AbstractNLSModel{T, V}; linsolve::Symbol = :ma57) w
   dual = V(undef, nvar)
   primal = V(undef, nequ + ncon)
 
-  nnzhF, nnzhc = nls.nls_meta.nnzh, ncon > 0 ? nls.meta.nnzh : 0
+  use_FHess = method in [:Newton, :Newton_vanishing]
+  nnzhF = use_FHess ? nls.nls_meta.nnzh : 0
+  nnzhc = ncon > 0 ? nls.meta.nnzh : 0
   nnzjF, nnzjc = nls.nls_meta.nnzj, nls.meta.nnzj
   nnzNS = nnzhF + nnzhc + nnzjF + nnzjc + nvar + nequ + ncon
 
-  hsr_rows, hsr_cols = hess_structure_residual(nls)
+  hsr_rows, hsr_cols = use_FHess ? hess_structure_residual(nls) : (Int[], Int[])
   Ti = eltype(hsr_rows)
   rows = Vector{Ti}(undef, nnzNS)
   cols = Vector{Ti}(undef, nnzNS)
@@ -278,8 +284,10 @@ function CaNNOLeSSolver(nls::AbstractNLSModel{T, V}; linsolve::Symbol = :ma57) w
   # G = [Hx + ρI; Jx -I; Jcx 0 -δI]
   # Hx
   sI = 1:nnzhF
-  rows[sI] .= hsr_rows
-  cols[sI] .= hsr_cols
+  if nnzhF > 0
+    rows[sI] .= hsr_rows
+    cols[sI] .= hsr_cols
+  end
   if ncon > 0
     sI = nnzhF .+ (1:nnzhc)
     rows[sI], cols[sI] = hess_structure(nls)
@@ -375,11 +383,15 @@ function SolverCore.reset!(solver::CaNNOLeSSolver)
 end
 function SolverCore.reset!(solver::CaNNOLeSSolver, nls::AbstractNLSModel)
   ncon = nls.meta.ncon
-  hess_structure_residual!(nls, solver.hsr_rows, solver.hsr_cols)
+  use_FHess = length(solver.hsr_rows) > 0
+  if use_FHess
+    hess_structure_residual!(nls, solver.hsr_rows, solver.hsr_cols)
+  end
   jac_structure_residual!(nls, solver.Jx_rows, solver.Jx_cols)
   jac_structure!(nls, solver.Jcx_rows, solver.Jcx_cols)
   if ncon > 0
-    nnzhF, nnzhc = nls.nls_meta.nnzh, ncon > 0 ? nls.meta.nnzh : 0
+    nnzhF = length(solver.hsr_rows)
+    nnzhc = ncon > 0 ? nls.meta.nnzh : 0
     sI = nnzhF .+ (1:nnzhc)
     solver.rows[sI], solver.cols[sI] = hess_structure(nls)
   end
@@ -389,6 +401,7 @@ end
 @doc (@doc CaNNOLeSSolver) function cannoles(
   nls::AbstractNLSModel;
   linsolve::Symbol = :ma57,
+  method::Symbol = :Newton,
   kwargs...,
 )
   if has_bounds(nls) || inequality_constrained(nls)
@@ -397,8 +410,8 @@ end
   if !(nls.meta.minimize)
     error("CaNNOLeS only works for minimization problem")
   end
-  solver = CaNNOLeSSolver(nls, linsolve = linsolve)
-  return SolverCore.solve!(solver, nls; kwargs...)
+  solver = CaNNOLeSSolver(nls, linsolve = linsolve, method = method)
+  return SolverCore.solve!(solver, nls; method = method, kwargs...)
 end
 
 function SolverCore.solve!(
@@ -944,7 +957,8 @@ function prepare_newton_system!(
 ) where {T, V}
   nvar, ncon = nls.meta.nvar, nls.meta.ncon
   nequ = nls.nls_meta.nequ
-  nnzhF, nnzhc = nls.nls_meta.nnzh, ncon > 0 ? nls.meta.nnzh : 0
+  nnzhF = Meth in [Val{:Newton}(), Val{:Newton_vanishing}()] ? nls.nls_meta.nnzh : 0
+  nnzhc = ncon > 0 ? nls.meta.nnzh : 0
   nnzjF, nnzjc = nls.nls_meta.nnzj, nls.meta.nnzj
 
   update_newton_hessian!(Meth, nls, x, r, vals, Fx)
@@ -971,7 +985,7 @@ end
 Update, if need for `method`, the top-left block with the non-zeros values of the Hessian of the residual.
 For `method=:Newton_vanishing`, this update is skipped if `‖F(xᵏ)‖ ≤ 1e-8`.
 """
-function update_newton_hessian!(::Val{T}, args...) where {T <: Symbol} end
+function update_newton_hessian!(::Val, args...) end
 
 function update_newton_hessian!(::Val{:Newton}, nls, x, r, vals, Fx)
   sI = 1:(nls.nls_meta.nnzh)

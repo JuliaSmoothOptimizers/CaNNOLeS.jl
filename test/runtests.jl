@@ -7,6 +7,8 @@ using ADNLPModels, NLPModels, SolverCore
 # this package
 using CaNNOLeS
 
+include("noFHess-model.jl")
+
 @info("available_linsolvers: $(CaNNOLeS.available_linsolvers)")
 
 mutable struct DummyModel{T, S} <: AbstractNLSModel{T, S}
@@ -186,6 +188,17 @@ end
   stats = solve!(solver, nlp, stats)
   @test stats.status_reliable && stats.status == :first_order
   @test stats.solution_reliable && isapprox(stats.solution, [0.0; 0.0], atol = 1e-6)
+end
+
+@testset "Problem without second order information can be solved with method=:Newton_noFHess" begin
+  nls = MGH01_noFHess()
+  stats = cannoles(nls, method=:Newton_noFHess)
+  @test isapprox(stats.solution, [1.0; 1.0], atol = 1e-6)
+  reset!(nls)
+  stats = cannoles(nls, method=:Newton_noFHess)
+  @test isapprox(stats.solution, [1.0; 1.0], atol = 1e-6)
+  reset!(nls)
+  @test_throws MethodError cannoles(nls)
 end
 
 cannoles_tests()
