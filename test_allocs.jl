@@ -21,8 +21,8 @@ solver = CaNNOLeSSolver(nls)
 stats = cannoles(nls)
 x0 = zeros(2)
 λ = nls.meta.y0
-@allocated solve!(solver, nls, stats, x = x0, λ = λ)
-a = @allocated solve!(solver, nls, stats, x = x0, λ = λ) # 6720
+@allocated solve!(solver, nls, stats) # , x = x0, λ = λ)
+a = @allocated solve!(solver, nls, stats) # , x = x0, λ = λ) # 6720
 @show a
 
 #=
@@ -30,8 +30,8 @@ a = @allocated solve!(solver, nls, stats, x = x0, λ = λ) # 6720
 =#
 
 x0 = nls.meta.x0
-@allocated solve!(solver, nls, stats, x = x0, λ = λ)
-a = @allocated solve!(solver, nls, stats, x = x0, λ = λ) # 45248
+@allocated solve!(solver, nls, stats) # , x = x0, λ = λ)
+a = @allocated solve!(solver, nls, stats) # , x = x0, λ = λ) # 45248
 @show a
 
 using Profile
