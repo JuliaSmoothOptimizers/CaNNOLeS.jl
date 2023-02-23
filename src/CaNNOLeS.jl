@@ -957,7 +957,7 @@ function prepare_newton_system!(
 ) where {T, V}
   nvar, ncon = nls.meta.nvar, nls.meta.ncon
   nequ = nls.nls_meta.nequ
-  nnzhF = Meth in [Val{:Newton}(), Val{:Newton_vanishing}()] ? nls.nls_meta.nnzh : 0
+  nnzhF = Meth in (Val(:Newton), Val(:Newton_vanishing)) ? nls.nls_meta.nnzh : 0
   nnzhc = ncon > 0 ? nls.meta.nnzh : 0
   nnzjF, nnzjc = nls.nls_meta.nnzj, nls.meta.nnzj
 
