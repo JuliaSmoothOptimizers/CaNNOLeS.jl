@@ -123,7 +123,8 @@ or even pre-allocate the output:
 
 # Keyword arguments
 - `x::AbstractVector = nls.meta.x0`: the initial guess;
-- `λ::AbstractVector = T[]`: the initial Lagrange multiplier;
+- `λ::AbstractVector = nls.meta.y0`: the initial Lagrange multiplier;
+- `use_initial_multiplier::Bool = false`: if `true` use `λ` for the initial stopping tests;
 - `method::Symbol = :Newton`: available methods `:Newton, :LM, :Newton_noFHess`, and `:Newton_vanishing`;
 - `linsolve::Symbol = :ma57`: solver to compute LDLt factorization. Available methods are: `:ma57`, `:ldlfactorizations`;
 - `max_iter::Int = -1`: maximum number of iterations;
@@ -187,6 +188,7 @@ stats
 """
 mutable struct CaNNOLeSSolver{Ti, T, V, F} <: AbstractOptimizationSolver
   x::V
+  λ::V
   cx::V
   r::V
   Fx::V
@@ -239,6 +241,7 @@ function CaNNOLeSSolver(
   ncon = nls.meta.ncon
 
   x = similar(nls.meta.x0)
+  λ = similar(nls.meta.y0)
   cx = zeros(T, ncon)
   r = V(undef, nequ)
   Fx = V(undef, nequ)
@@ -340,6 +343,7 @@ function CaNNOLeSSolver(
 
   return CaNNOLeSSolver{Ti, T, V, F}(
     x,
+    λ,
     cx,
     r,
     Fx,
@@ -420,7 +424,8 @@ function SolverCore.solve!(
   stats::GenericExecutionStats{T, V, V};
   callback = (args...) -> nothing,
   x::V = nls.meta.x0,
-  λ::V = T[],
+  λ::V = nls.meta.y0,
+  use_initial_multiplier::Bool = false,
   method::Symbol = :Newton,
   max_iter::Int = -1,
   max_eval::Real = 100000,
@@ -445,6 +450,7 @@ function SolverCore.solve!(
   ncon = nls.meta.ncon
 
   x = solver.x .= x
+  λ = solver.λ .= λ
 
   # Parameters
   params = update!(solver.params, eps(T))
@@ -508,11 +514,11 @@ function SolverCore.solve!(
 
   elapsed_time = 0.0
 
-  if length(λ) == 0
+  if !use_initial_multiplier
     Krylov.solve!(cgls_solver, Jcx', Jxtr) # Armand 2012
-    λ = cgls_solver.x
+    λ .= cgls_solver.x
     if norm(λ) == 0
-      λ = ones(T, ncon)
+      λ .= one(T)
     end
   end
 
