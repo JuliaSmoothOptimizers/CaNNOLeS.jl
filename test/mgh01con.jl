@@ -1,16 +1,9 @@
-export MGH01CON # , MGH01CON_special
-
-# MGH01CON_special() = FeasibilityResidual(MGH01CONFeas())
+export MGH01CON
 
 """
     nls = MGH01CON()
 
-## Rosenbrock function in nonlinear least squares format
-
-    Source: Problem 1 in
-    J.J. Moré, B.S. Garbow and K.E. Hillstrom,
-    "Testing Unconstrained Optimization Software",
-    ACM Transactions on Mathematical Software, vol. 7(1), pp. 17-41, 1981
+## Rosenbrock function in nonlinear least squares format with an equality constraint.
 
 ```math
 \\begin{aligned}

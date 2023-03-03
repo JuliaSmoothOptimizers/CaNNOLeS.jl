@@ -3,7 +3,7 @@ Pkg.activate(".")
 using CaNNOLeS, NLPModels, SolverCore
 Pkg.status()
 
-include("mgh01con.jl")
+include("test/mgh01con.jl")
 nls = MGH01CON()
 
 stats, solver = GenericExecutionStats(nls), CaNNOLeSSolver(nls)

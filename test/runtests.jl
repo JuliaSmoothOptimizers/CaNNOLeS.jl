@@ -8,6 +8,7 @@ using ADNLPModels, NLPModels, SolverCore
 using CaNNOLeS
 
 include("noFHess-model.jl")
+include("mgh01con.jl")
 
 @info("available_linsolvers: $(CaNNOLeS.available_linsolvers)")
 
@@ -25,6 +26,18 @@ s *= join(["`$x`" for x in CaNNOLeS.avail_mtds], ", ")
 
 nls = DummyModel(NLPModelMeta(1, minimize = false))
 @test_throws ErrorException("CaNNOLeS only works for minimization problem") cannoles(nls)
+
+if VERSION ≥ v"1.6"
+  @testset "Test allocations CaNNOLeS" for x0 in (zeros(2), [-1.2; 1])
+    nls = MGH01CON()
+    stats, solver = GenericExecutionStats(nls), CaNNOLeSSolver(nls)
+    nls.meta.x0 .= x0
+    @allocated solve!(solver, nls, stats)
+    al = @allocated solve!(solver, nls, stats)
+    @show @allocated solve!(solver, nls, stats)
+    @test al <= 16
+  end
+end
 
 @testset "Test callback" begin
   nls = ADNLSModel(
