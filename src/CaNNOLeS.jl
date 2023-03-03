@@ -35,6 +35,8 @@ function _check_available_method(method::Symbol)
   end
 end
 
+include("hessian_approx.jl")
+
 """
     ParamCaNNOLeS(eig_tol,δmin,κdec,κinc,κlargeinc,ρ0,ρmax,ρmin,γA)
     ParamCaNNOLeS(::Type{T})
@@ -186,7 +188,7 @@ stats
 "Execution stats: first-order stationary"
 ```
 """
-mutable struct CaNNOLeSSolver{Ti, T, V, F} <: AbstractOptimizationSolver
+mutable struct CaNNOLeSSolver{Ti, T, V, F, M} <: AbstractOptimizationSolver
   x::V
   λ::V
   cx::V
@@ -210,8 +212,7 @@ mutable struct CaNNOLeSSolver{Ti, T, V, F} <: AbstractOptimizationSolver
   rows::Vector{Ti}
   cols::Vector{Ti}
   vals::V
-  hsr_rows::Vector{Ti}
-  hsr_cols::Vector{Ti}
+  hessian_struct::M
   Jx_rows::Vector{Ti}
   Jx_cols::Vector{Ti}
   Jx_vals::V
@@ -236,6 +237,8 @@ function CaNNOLeSSolver(
   linsolve::Symbol = :ma57,
   method::Symbol = :Newton,
 ) where {T, V}
+  _check_available_method(method)
+
   nvar = nls.meta.nvar
   nequ = nls_meta(nls).nequ
   ncon = nls.meta.ncon
@@ -260,19 +263,11 @@ function CaNNOLeSSolver(
   dual = V(undef, nvar)
   primal = V(undef, nequ + ncon)
 
-  use_FHess = method in [:Newton, :Newton_vanishing]
-  nnzhF = use_FHess ? nls.nls_meta.nnzh : 0
   nnzhc = ncon > 0 ? nls.meta.nnzh : 0
   nnzjF, nnzjc = nls.nls_meta.nnzj, nls.meta.nnzj
-  nnzNS = nnzhF + nnzhc + nnzjF + nnzjc + nvar + nequ + ncon
 
-  hsr_rows, hsr_cols = use_FHess ? hess_structure_residual(nls) : (Int[], Int[])
-  Ti = eltype(hsr_rows)
-  rows = Vector{Ti}(undef, nnzNS)
-  cols = Vector{Ti}(undef, nnzNS)
-  vals = V(undef, nnzNS)
-  vals .= one(T)
   Jx_rows, Jx_cols = jac_structure_residual(nls)
+  Ti = eltype(Jx_rows)
   Jx_vals = V(undef, nls.nls_meta.nnzj)
   Jx = SparseMatrixCOO(nequ, nvar, Jx_rows, Jx_cols, Jx_vals)
   Jt_vals = V(undef, nls.nls_meta.nnzj)
@@ -282,6 +277,16 @@ function CaNNOLeSSolver(
   Jcx = SparseMatrixCOO(ncon, nvar, Jcx_rows, Jcx_cols, Jcx_vals)
   Jct_vals = V(undef, nls.meta.nnzj)
   Jct = SparseMatrixCOO(ncon, nvar, Jcx_rows, Jcx_cols, Jct_vals)
+
+  hessian_struct = eval(method)(nls, Ti)
+  nnzhF = get_nnzh(hessian_struct)
+  nnzNS = nnzhF + nnzhc + nnzjF + nnzjc + nvar + nequ + ncon
+  hsr_rows, hsr_cols = get_structure(hessian_struct)
+
+  rows = Vector{Ti}(undef, nnzNS)
+  cols = Vector{Ti}(undef, nnzNS)
+  vals = V(undef, nnzNS)
+  vals .= one(T)
 
   # Allocation and structure of Newton system matrix
   # G = [Hx + ρI; Jx -I; Jcx 0 -δI]
@@ -341,7 +346,7 @@ function CaNNOLeSSolver(
 
   params = ParamCaNNOLeS(T)
 
-  return CaNNOLeSSolver{Ti, T, V, F}(
+  return CaNNOLeSSolver{Ti, T, V, F, typeof(hessian_struct)}(
     x,
     λ,
     cx,
@@ -362,8 +367,7 @@ function CaNNOLeSSolver(
     rows,
     cols,
     vals,
-    hsr_rows,
-    hsr_cols,
+    hessian_struct,
     Jx_rows,
     Jx_cols,
     Jx_vals,
@@ -387,14 +391,17 @@ function SolverCore.reset!(solver::CaNNOLeSSolver)
 end
 function SolverCore.reset!(solver::CaNNOLeSSolver, nls::AbstractNLSModel)
   ncon = nls.meta.ncon
-  use_FHess = length(solver.hsr_rows) > 0
-  if use_FHess
-    hess_structure_residual!(nls, solver.hsr_rows, solver.hsr_cols)
+  hstruct = solver.hessian_struct
+  nnzhF = get_nnzh(hstruct)
+  sI = 1:nnzhF
+  if nnzhF > 0
+    hsr_rows, hsr_cols = hess_structure_residual!(nls, hstruct.hsr_rows, hstruct.hsr_cols)
+    solver.rows[sI] .= hsr_rows
+    solver.cols[sI] .= hsr_cols
   end
   jac_structure_residual!(nls, solver.Jx_rows, solver.Jx_cols)
   jac_structure!(nls, solver.Jcx_rows, solver.Jcx_cols)
   if ncon > 0
-    nnzhF = length(solver.hsr_rows)
     nnzhc = ncon > 0 ? nls.meta.nnzh : 0
     sI = nnzhF .+ (1:nnzhc)
     solver.rows[sI], solver.cols[sI] = hess_structure(nls)
@@ -415,18 +422,17 @@ end
     error("CaNNOLeS only works for minimization problem")
   end
   solver = CaNNOLeSSolver(nls, linsolve = linsolve, method = method)
-  return SolverCore.solve!(solver, nls; method = method, kwargs...)
+  return SolverCore.solve!(solver, nls; kwargs...)
 end
 
 function SolverCore.solve!(
-  solver::CaNNOLeSSolver{Ti, T, V, F},
+  solver::CaNNOLeSSolver{Ti, T, V, F, M},
   nls::AbstractNLSModel{T, V},
   stats::GenericExecutionStats{T, V, V};
   callback = (args...) -> nothing,
   x::V = nls.meta.x0,
   λ::V = nls.meta.y0,
   use_initial_multiplier::Bool = false,
-  method::Symbol = :Newton,
   max_iter::Int = -1,
   max_eval::Real = 100000,
   max_time::Real = 30.0,
@@ -438,11 +444,10 @@ function SolverCore.solve!(
   verbose::Integer = 0,
   always_accept_extrapolation::Bool = false,
   δdec::T = T(0.1),
-) where {Ti, T, V, F}
+) where {Ti, T, V, F, M <: HessianStruct{Ti}}
   reset!(stats)
   start_time = time()
 
-  _check_available_method(method)
   merit = :auglag
 
   nvar = nls.meta.nvar
@@ -630,7 +635,7 @@ function SolverCore.solve!(
 
       ### System solution
       if inner_iter != 1 || always_accept_extrapolation # If = 1, then extrapolation step failed, and x is not updated
-        prepare_newton_system!(Val(method), vals, nls, x, λ, r, Jx_vals, Jcx_vals, δ, Fx)
+        prepare_newton_system!(solver.hessian_struct, vals, nls, x, λ, r, Jx_vals, Jcx_vals, δ, Fx)
 
         # on first time, μnew = μ⁺
         rhs[1:nvar] .= dual
@@ -707,7 +712,7 @@ function SolverCore.solve!(
         λt .= λ .- cx ./ δ       # Safe if ncon = 0 and δ = 0.0
       end
 
-      if method == :LM
+      if M <: LM
         Ared = norm(Fx)^2 - norm(Ft)^2
         Pred = norm(Fx)^2 - (α == 0 ? norm(Fx + Jx * dx)^2 : norm(Fx + α * Jx * dx)^2)
         if Ared / Pred > 0.75
@@ -926,7 +931,7 @@ end
 
 #= TODO
 function prepare_newton_system!(
-  Meth::Val{:LM},
+  Meth::LM,
   vals::V,
   nls::AbstractNLSModel{T, V},
   x::V,
@@ -945,12 +950,12 @@ end
 =#
 
 """
-    prepare_newton_system!(Val(method), vals, nls, x, λ, r, Jx_vals, Jcx_vals, δ, Fx)
+    prepare_newton_system!(::HessianStruct{Ti}, vals, nls, x, λ, r, Jx_vals, Jcx_vals, δ, Fx)
 
 Update the Newton system.
 """
 function prepare_newton_system!(
-  Meth::Union{Val{:Newton}, Val{:Newton_noFHess}, Val{:Newton_vanishing}},
+  meth::Union{Newton, Newton_noFHess, Newton_vanishing},
   vals::V,
   nls::AbstractNLSModel{T, V},
   x::V,
@@ -963,11 +968,11 @@ function prepare_newton_system!(
 ) where {T, V}
   nvar, ncon = nls.meta.nvar, nls.meta.ncon
   nequ = nls.nls_meta.nequ
-  nnzhF = Meth in (Val(:Newton), Val(:Newton_vanishing)) ? nls.nls_meta.nnzh : 0
+  nnzhF = get_nnzh(meth)
   nnzhc = ncon > 0 ? nls.meta.nnzh : 0
   nnzjF, nnzjc = nls.nls_meta.nnzj, nls.meta.nnzj
 
-  update_newton_hessian!(Meth, nls, x, r, vals, Fx)
+  update_newton_hessian!(meth, nls, x, r, vals, Fx)
 
   sI = nnzhF + nnzhc .+ (1:nnzjF)
   vals[sI] .= Jx_vals
@@ -983,26 +988,6 @@ function prepare_newton_system!(
   sI = nnzhF + nnzhc + nnzjF + nnzjc + nequ + ncon .+ (1:nvar)
   vals[sI] .= zero(T)
   return vals
-end
-
-"""
-    update_newton_hessian!(::Val{method}, nls, x, r, vals, Fx)
-
-Update, if need for `method`, the top-left block with the non-zeros values of the Hessian of the residual.
-For `method=:Newton_vanishing`, this update is skipped if `‖F(xᵏ)‖ ≤ 1e-8`.
-"""
-function update_newton_hessian!(::Val, args...) end
-
-function update_newton_hessian!(::Val{:Newton}, nls, x, r, vals, Fx)
-  sI = 1:(nls.nls_meta.nnzh)
-  @views hess_coord_residual!(nls, x, r, vals[sI])
-end
-
-function update_newton_hessian!(::Val{:Newton_vanishing}, nls, x, r, vals, Fx)
-  if dot(Fx, Fx) > 1e-8
-    sI = 1:(nls.nls_meta.nnzh)
-    @views hess_coord_residual!(nls, x, r, vals[sI])
-  end
 end
 
 @deprecate newton_system(x, r, λ, Fx, rhs, LDLT, ρold, params, method, linsolve) newton_system(
