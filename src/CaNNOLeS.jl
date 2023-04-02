@@ -487,7 +487,8 @@ function SolverCore.solve!(
     end
 
   ϕ(x, λ, Fx, cx, η) = begin
-    dot(Fx, Fx) / 2 - dot(λ, cx) + η * dot(cx, cx) / 2
+    fx = obj(nls, x, Fx; recompute = false)
+    fx - dot(λ, cx) + η * dot(cx, cx) / 2
   end
 
   # Initial values
@@ -495,7 +496,7 @@ function SolverCore.solve!(
   if check_nan_inf(Fx)
     error("Initial point gives Inf or Nan")
   end
-  fx = dot(Fx, Fx) / 2
+  fx = obj(nls, x, Fx; recompute = false)
 
   jac_coord_residual!(nls, x, Jx_vals)
   Jx = solver.Jx
@@ -515,7 +516,7 @@ function SolverCore.solve!(
   dλ = solver.dλ
 
   Jxtr = solver.Jxtr
-  mul!(Jxtr, Jx', r)
+  grad!(nls, x, Jxtr, r; recompute = false)
 
   elapsed_time = 0.0
 
@@ -540,7 +541,7 @@ function SolverCore.solve!(
   normprimalhat = normprimal = norm(primal, Inf)
 
   smax = T(100.0)
-  ϵF = Fatol + Frtol * 2 * √fx # fx = 0.5‖F(x)‖²
+  ϵF = Fatol + Frtol * 2 * √fx
   ϵtol = atol + rtol * normdual
   ϵc = sqrt(ϵtol)
 
@@ -550,6 +551,8 @@ function SolverCore.solve!(
   first_order = max(normdual / sd, normprimal) <= ϵtol
   if small_residual && !first_order
     normprimal, normdual = optimality_check_small_residual!(
+      nls,
+      x,
       cgls_solver,
       r,
       λ,
@@ -611,7 +614,7 @@ function SolverCore.solve!(
     )
   end
 
-  set_objective!(stats, dot(Fx, Fx) / 2)
+  set_objective!(stats, fx)
   set_residuals!(stats, norm(cx), normdual)
   set_solution!(stats, x)
   set_constraint_multipliers!(stats, λ)
@@ -729,7 +732,7 @@ function SolverCore.solve!(
         Jct.vals .= Jct_vals
       end
 
-      mul!(Jxtr, Jt', rt)
+      grad!(nls, xt, Jxtr, rt; recompute = false)
       mul!(Jcxtλ, Jct', λt)
       dual .= Jxtr .- Jcxtλ
       primal[1:nequ] .= Ft .- rt
@@ -747,7 +750,7 @@ function SolverCore.solve!(
         x .= xt
         r .= rt
         Fx .= Ft
-        fx = dot(Fx, Fx) / 2
+        fx = obj(nls, x, Fx; recompute = false)
         cx .= ct
         Jx.vals .= Jt.vals
         Jx_vals .= Jt_vals
@@ -760,7 +763,7 @@ function SolverCore.solve!(
       if combined_optimality_hat <= T(0.99) * combined_optimality + ϵk
         λ .= λt
       else
-        mul!(Jxtr, Jx', r)
+        grad!(nls, x, Jxtr, r; recompute = false)
         mul!(Jcxtλ, Jcx', λ)
         dual .= Jxtr .- Jcxtλ
       end
@@ -806,6 +809,8 @@ function SolverCore.solve!(
     small_residual = (2 * √fx <= ϵF) && norm(cx) ≤ ϵc
     if small_residual && !first_order
       normprimal, normdual = optimality_check_small_residual!(
+        nls,
+        x,
         cgls_solver,
         r,
         λ,
@@ -857,7 +862,7 @@ function SolverCore.solve!(
     )
     set_status!(stats, status)
 
-    set_objective!(stats, dot(Fx, Fx) / 2)
+    set_objective!(stats, fx)
     set_residuals!(stats, norm(cx), normdual)
     set_constraint_multipliers!(stats, λ)
     set_solution!(stats, x)
@@ -874,12 +879,14 @@ function SolverCore.solve!(
 end
 
 """
-    normprimal, normdual = optimality_check_small_residual!(cgls_solver, r, λ, dual, primal, Fx, cx, Jx, Jcx, Jxtr, Jcxtλ)
+    normprimal, normdual = optimality_check_small_residual!(nls, x, cgls_solver, r, λ, dual, primal, Fx, cx, Jx, Jcx, Jxtr, Jcxtλ)
 
 Compute the norm of the primal and dual residuals.
 The values of `r`, `Jxtr`, `λ`, `primal` and `dual` are updated.
 """
 function optimality_check_small_residual!(
+  nls::AbstractNLSModel{T, V},
+  x::V,
   cgls_solver::CglsSolver{T, T, V},
   r::V,
   λ::V,
@@ -893,7 +900,7 @@ function optimality_check_small_residual!(
   Jcxtλ::V,
 ) where {T, V}
   r .= Fx
-  mul!(Jxtr, Jx', r)
+  grad!(nls, x, Jxtr, r; recompute = false)
   Krylov.solve!(cgls_solver, Jcx', Jxtr)
   λ .= cgls_solver.x # Armand 2012
   mul!(Jcxtλ, Jcx', λ)
