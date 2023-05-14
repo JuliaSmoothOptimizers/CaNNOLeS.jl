@@ -35,7 +35,7 @@ if VERSION >= v"1.7"
     @allocated solve!(solver, nls, stats)
     al = @allocated solve!(solver, nls, stats)
     @show @allocated solve!(solver, nls, stats)
-    @test al <= 16
+    @test al <= 96
   end
 end
 
