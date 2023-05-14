@@ -234,7 +234,7 @@ end
 
 function CaNNOLeSSolver(
   nls::AbstractNLSModel{T, V};
-  linsolve::Symbol = :ma57,
+  linsolve::Symbol = :ldlfactorizations, # :ma57,
   method::Symbol = :Newton,
 ) where {T, V}
   _check_available_method(method)
