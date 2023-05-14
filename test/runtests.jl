@@ -27,7 +27,7 @@ s *= join(["`$x`" for x in CaNNOLeS.avail_mtds], ", ")
 nls = DummyModel(NLPModelMeta(1, minimize = false))
 @test_throws ErrorException("CaNNOLeS only works for minimization problem") cannoles(nls)
 
-if VERSION > v"1.6"
+if VERSION >= v"1.7"
   @testset "Test allocations CaNNOLeS" for x0 in (zeros(2), [-1.2; 1])
     nls = MGH01CON()
     stats, solver = GenericExecutionStats(nls), CaNNOLeSSolver(nls)
