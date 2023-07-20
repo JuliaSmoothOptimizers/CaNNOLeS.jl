@@ -1,18 +1,9 @@
 abstract type HessianStruct{Ti} end
 
-import NLPModels.get_nnzh
-
 """
     get_nnzh(::HessianStruct)
 
 Return number of nonzeros in the approximatation of the Hessian.
-"""
-function get_nnzh end
-
-"""
-    get_structure(::HessianStruct)
-
-Return the structure of the approximatation of the Hessian.
 """
 function get_nnzh end
 
