@@ -1,5 +1,7 @@
 abstract type HessianStruct{Ti} end
 
+import NLPModels.get_nnzh
+
 """
     get_nnzh(::HessianStruct)
 
