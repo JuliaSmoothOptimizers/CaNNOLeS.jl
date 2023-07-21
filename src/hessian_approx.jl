@@ -7,13 +7,6 @@ Return number of nonzeros in the approximatation of the Hessian.
 """
 function get_nnzh end
 
-"""
-    get_structure(::HessianStruct)
-
-Return the structure of the approximatation of the Hessian.
-"""
-function get_nnzh end
-
 struct Newton_noFHess{Ti} <: HessianStruct{Ti} end
 Newton_noFHess(nls, ::Type{Ti}) where {Ti} = Newton_noFHess{Ti}()
 get_nnzh(::Newton_noFHess) = 0
