@@ -1,6 +1,6 @@
 name = "CaNNOLeS"
 uuid = "5a1c9e79-9c58-5ec0-afc4-3298fdea2875"
-authors = ["Tangi Migot" <tangi.migot@gmail.com>, "Abel Soares Siqueira <abel.s.siqueira@gmail.com>", "Dominique Orban <dominique.orban@gerad.ca>"]
+authors = ["Tangi Migot <tangi.migot@gmail.com>, Abel Soares Siqueira <abel.s.siqueira@gmail.com>, Dominique Orban <dominique.orban@gerad.ca>, and contributors"]
 version = "0.7.5"
 
 [deps]
