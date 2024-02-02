@@ -3,8 +3,7 @@
 
 cff-version: 1.2.0
 title: >-
-  DCISolver.jl: A Julia Solver for Nonlinear
-  Optimization using Dynamic Control of Infeasibility
+  CaNNOLeS.jl: Constrained and NoNlinear Optimizer of Least Squares
 message: >-
   If you use this software, please cite it using the
   metadata from this file.
