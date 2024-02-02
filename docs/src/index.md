@@ -16,14 +16,14 @@ It uses other JuliaSmoothOptimizers packages for development.
 In particular, [NLPModels.jl](https://github.com/JuliaSmoothOptimizers/NLPModels.jl) is used for defining the problem, and [SolverCore](https://github.com/JuliaSmoothOptimizers/SolverCore.jl) for the output.
 It also uses [HSL.jl](https://github.com/JuliaSmoothOptimizers/HSL.jl)'s `MA57` as main solver, but you can pass `linsolve=:ldlfactorizations` to use [LDLFactorizations.jl](https://github.com/JuliaSmoothOptimizers/LDLFactorizations.jl).
 
-Cite as
+## References
 
 > Orban, D., & Siqueira, A. S.
 > A Regularization Method for Constrained Nonlinear Least Squares.
 > Computational Optimization and Applications 76, 961–989 (2020).
 > [10.1007/s10589-020-00201-2](https://doi.org/10.1007/s10589-020-00201-2)
 
-Check [CITATION.bib](CITATION.bib) for bibtex.
+If you use CaNNOLeS.jl in your work, please cite using the format given in [CITATION.cff](CITATION.cff).
 
 ## Installation
 
