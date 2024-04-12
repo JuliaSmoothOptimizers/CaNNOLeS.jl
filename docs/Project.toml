@@ -13,6 +13,6 @@ SolverCore = "ff4d7338-4cf1-434d-91df-b86cb86fb843"
 
 [compat]
 ADNLPModels = "0.7"
-Documenter = "0.26"
+Documenter = "1"
 NLPModels = "0.20"
 SolverCore = "0.3"
