@@ -8,7 +8,7 @@ Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 [compat]
 ADNLPModels = "0.7"
 Logging = "1"
-NLPModels = "0.20"
+NLPModels = "0.21"
 SolverCore = "0.3"
 Test = "1"
 julia = "^1.6.0"
