@@ -445,7 +445,7 @@ function SolverCore.solve!(
   always_accept_extrapolation::Bool = false,
   δdec::T = T(0.1),
 ) where {Ti, T, V, F, M <: HessianStruct{Ti}}
-  reset!(stats)
+  SolverCore.reset!(stats)
   start_time = time()
 
   merit = :auglag
