@@ -8,16 +8,6 @@ using LinearAlgebra, Logging, SparseArrays
 using HSL, Krylov, LDLFactorizations, LinearOperators, NLPModels, SolverCore, SparseMatricesCOO
 using SolverCore: eval_fun
 
-function __init__()
-  global available_linsolvers = [:ldlfactorizations]
-  if isdefined(HSL, :libhsl_ma57)
-    push!(available_linsolvers, :ma57)
-  end
-  # if isdefined(HSL, :libhsl_ma97)
-  #   push!(available_linsolvers, :ma97)
-  # end
-end
-
 const avail_mtds = Symbol[:Newton, :LM, :Newton_noFHess, :Newton_vanishing]
 
 """
@@ -227,7 +217,7 @@ mutable struct CaNNOLeSSolver{Ti, T, V, F, M} <: AbstractOptimizationSolver
   Jct::SparseMatrixCOO{T, Ti}
 
   LDLT::F
-  cgls_solver::CglsSolver{T, T, V}
+  cgls_workspace::CglsWorkspace{T, T, V}
 
   params::ParamCaNNOLeS{T}
 end
@@ -324,7 +314,7 @@ function CaNNOLeSSolver(
   sI = nnzhF + nnzhc + nnzjF + nnzjc + nequ + ncon .+ (1:nvar)
   rows[sI], cols[sI] = 1:nvar, 1:nvar
 
-  if !(linsolve in available_linsolvers)
+  if linsolve != :ldlfactorizations && !LIBHSL_isfunctional()
     @warn("linsolve $linsolve not available. Using :ldlfactorizations instead")
     linsolve = :ldlfactorizations
   end
@@ -342,7 +332,7 @@ function CaNNOLeSSolver(
   end
   F = typeof(LDLT)
 
-  cgls_solver = CglsSolver(nvar, ncon, V)
+  cgls_workspace = CglsWorkspace(nvar, ncon, V)
 
   params = ParamCaNNOLeS(T)
 
@@ -381,7 +371,7 @@ function CaNNOLeSSolver(
     Jct_vals,
     Jct,
     LDLT,
-    cgls_solver,
+    cgls_workspace,
     params,
   )
 end
@@ -471,7 +461,7 @@ function SolverCore.solve!(
   Jt, Jct = solver.Jt, solver.Jct
   vals = solver.vals
   LDLT = solver.LDLT
-  cgls_solver = solver.cgls_solver
+  cgls_workspace = solver.cgls_workspace
 
   # Shorter function definitions
   F!(x, Fx) = residual!(nls, x, Fx)
@@ -520,8 +510,8 @@ function SolverCore.solve!(
   elapsed_time = 0.0
 
   if !use_initial_multiplier
-    Krylov.solve!(cgls_solver, Jcx', Jxtr) # Armand 2012
-    λ .= cgls_solver.x
+    krylov_solve!(cgls_workspace, Jcx', Jxtr) # Armand 2012
+    λ .= cgls_workspace.x
     if norm(λ) == 0
       λ .= one(T)
     end
@@ -550,7 +540,7 @@ function SolverCore.solve!(
   first_order = max(normdual / sd, normprimal) <= ϵtol
   if small_residual && !first_order
     normprimal, normdual = optimality_check_small_residual!(
-      cgls_solver,
+      cgls_workspace,
       r,
       λ,
       dual,
@@ -806,7 +796,7 @@ function SolverCore.solve!(
     small_residual = (2 * √fx <= ϵF) && norm(cx) ≤ ϵc
     if small_residual && !first_order
       normprimal, normdual = optimality_check_small_residual!(
-        cgls_solver,
+        cgls_workspace,
         r,
         λ,
         dual,
@@ -874,13 +864,13 @@ function SolverCore.solve!(
 end
 
 """
-    normprimal, normdual = optimality_check_small_residual!(cgls_solver, r, λ, dual, primal, Fx, cx, Jx, Jcx, Jxtr, Jcxtλ)
+    normprimal, normdual = optimality_check_small_residual!(cgls_workspace, r, λ, dual, primal, Fx, cx, Jx, Jcx, Jxtr, Jcxtλ)
 
 Compute the norm of the primal and dual residuals.
 The values of `r`, `Jxtr`, `λ`, `primal` and `dual` are updated.
 """
 function optimality_check_small_residual!(
-  cgls_solver::CglsSolver{T, T, V},
+  cgls_workspace::CglsWorkspace{T, T, V},
   r::V,
   λ::V,
   dual::V,
@@ -894,8 +884,8 @@ function optimality_check_small_residual!(
 ) where {T, V}
   r .= Fx
   mul!(Jxtr, Jx', r)
-  Krylov.solve!(cgls_solver, Jcx', Jxtr)
-  λ .= cgls_solver.x # Armand 2012
+  krylov_solve!(cgls_workspace, Jcx', Jxtr)
+  λ .= cgls_workspace.x # Armand 2012
   mul!(Jcxtλ, Jcx', λ)
   dual .= Jxtr .- Jcxtλ
   normdual = norm(dual, Inf)
