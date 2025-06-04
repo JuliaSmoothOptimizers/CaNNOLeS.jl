@@ -23,7 +23,7 @@ It also uses [HSL.jl](https://github.com/JuliaSmoothOptimizers/HSL.jl)'s `MA57` 
 > Computational Optimization and Applications 76, 961–989 (2020).
 > [10.1007/s10589-020-00201-2](https://doi.org/10.1007/s10589-020-00201-2)
 
-If you use CaNNOLeS.jl in your work, please cite using the format given in [CITATION.cff](CITATION.cff).
+If you use CaNNOLeS.jl in your work, please cite using the format given in [CITATION.cff](https://github.com/JuliaSmoothOptimizers/CaNNOLeS.jl/blob/main/CITATION.cff).
 
 ## Installation
 
