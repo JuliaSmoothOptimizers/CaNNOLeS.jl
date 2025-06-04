@@ -1,5 +1,3 @@
-using HSL, LDLFactorizations
-
 abstract type LinearSolverStruct end
 
 """
@@ -16,38 +14,32 @@ Compute the solution of `LDLt d = -rhs`.
 """
 function solve_ldl! end
 
-if isdefined(HSL, :libhsl_ma57)
-  mutable struct MA57Struct <: LinearSolverStruct
-    factor::Ma57
-  end
+mutable struct MA57Struct <: LinearSolverStruct
+  factor::Ma57
+end
 
-  function MA57Struct(N, rows, cols, vals)
-    MA57Struct(ma57_coord(N, rows, cols, vals))
-  end
+function MA57Struct(N, rows, cols, vals)
+  MA57Struct(ma57_coord(N, rows, cols, vals))
+end
 
-  get_vals(LDLT::MA57Struct) = LDLT.factor.vals
-  function solve_ldl!(rhs::AbstractVector, factor::Ma57, d::AbstractVector)
-    d .= ma57_solve(factor, rhs)
-    d .= .-d
-    return true
-  end
+get_vals(LDLT::MA57Struct) = LDLT.factor.vals
+function solve_ldl!(rhs::AbstractVector, factor::Ma57, d::AbstractVector)
+  d .= ma57_solve(factor, rhs)
+  d .= .-d
+  return true
+end
 
-  function try_to_factorize(
-    LDLT::MA57Struct,
-    vals::AbstractVector,
-    nvar::Integer,
-    nequ::Integer,
-    ncon::Integer,
-    eig_tol::Real,
-  )
-    ma57_factorize!(LDLT.factor)
-    success = LDLT.factor.info.info[1] == 0 && LDLT.factor.info.num_negative_eigs == nequ + ncon
-    return success
-  end
-else
-  function MA57Struct(N, rows, cols, vals)
-    error("MA57 not installed. See HSL.jl")
-  end
+function try_to_factorize(
+  LDLT::MA57Struct,
+  vals::AbstractVector,
+  nvar::Integer,
+  nequ::Integer,
+  ncon::Integer,
+  eig_tol::Real,
+)
+  ma57_factorize!(LDLT.factor)
+  success = LDLT.factor.info.info[1] == 0 && LDLT.factor.info.num_negative_eigs == nequ + ncon
+  return success
 end
 
 mutable struct LDLFactStruct{T, Ti <: Integer} <: LinearSolverStruct

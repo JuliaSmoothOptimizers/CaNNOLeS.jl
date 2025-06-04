@@ -2,15 +2,13 @@
 using Logging, Test
 
 # JSO packages
-using ADNLPModels, NLPModels, SolverCore
+using ADNLPModels, NLPModels, SolverCore, HSL
 
 # this package
 using CaNNOLeS
 
 include("noFHess-model.jl")
 include("mgh01con.jl")
-
-@info("available_linsolvers: $(CaNNOLeS.available_linsolvers)")
 
 mutable struct DummyModel{T, S} <: AbstractNLSModel{T, S}
   meta::NLPModelMeta{T, S}
@@ -27,16 +25,14 @@ s *= join(["`$x`" for x in CaNNOLeS.avail_mtds], ", ")
 nls = DummyModel(NLPModelMeta(1, minimize = false))
 @test_throws ErrorException("CaNNOLeS only works for minimization problem") cannoles(nls)
 
-if VERSION >= v"1.7"
-  @testset "Test allocations CaNNOLeS" for x0 in (zeros(2), [-1.2; 1])
-    nls = MGH01CON()
-    stats, solver = GenericExecutionStats(nls), CaNNOLeSSolver(nls)
-    nls.meta.x0 .= x0
-    @allocated solve!(solver, nls, stats)
-    al = @allocated solve!(solver, nls, stats)
-    @show @allocated solve!(solver, nls, stats)
-    @test al <= 96
-  end
+@testset "Test allocations CaNNOLeS" for x0 in (zeros(2), [-1.2; 1])
+  nls = MGH01CON()
+  stats, solver = GenericExecutionStats(nls), CaNNOLeSSolver(nls)
+  nls.meta.x0 .= x0
+  @allocated solve!(solver, nls, stats)
+  al = @allocated solve!(solver, nls, stats)
+  @show @allocated solve!(solver, nls, stats)
+  @test al <= 96
 end
 
 @testset "Test callback" begin
@@ -75,7 +71,8 @@ function cannoles_tests()
       [(x -> F_under(x, n), i * ones(n), i * ones(n)) for i = 1:5]
     ]
       nls = ADNLSModel(F, x0, length(F(x0)))
-      for solver in CaNNOLeS.available_linsolvers
+      for solver in (:ldlfactorizations, :ma57)
+        solver == :ma57 && !LIBHSL_isfunctional() && continue
         stats = cannoles(nls, linsolve = solver, verbose = 0)
         @test isapprox(stats.solution, xf, atol = 1e-4)
       end
@@ -94,7 +91,8 @@ function cannoles_tests()
     ]
       m = length(c(x0))
       nls = ADNLSModel(F, x0, length(F(x0)), c, zeros(m), zeros(m))
-      for solver in CaNNOLeS.available_linsolvers
+      for solver in (:ldlfactorizations, :ma57)
+        solver == :ma57 && !LIBHSL_isfunctional() && continue
         stats = cannoles(nls, linsolve = solver, verbose = 0)
         @test isapprox(stats.solution, xf, atol = 1e-4)
       end
@@ -102,7 +100,8 @@ function cannoles_tests()
   end
 
   @testset "Multiprecision" begin
-    for solver in CaNNOLeS.available_linsolvers
+    for solver in (:ldlfactorizations, :ma57)
+      solver == :ma57 && !LIBHSL_isfunctional() && continue
       precisions =
         solver == :ldlfactorizations ? (Float16, Float32, Float64, BigFloat) : (Float32, Float64)
       for T in precisions
