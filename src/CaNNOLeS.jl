@@ -620,7 +620,7 @@ function SolverCore.solve!(
     combined_optimality_hat = T(Inf)
     first_iteration = true
     while first_iteration ||
-      !(combined_optimality_hat <= T(0.99) * combined_optimality + ϵk || tired)
+          !(combined_optimality_hat <= T(0.99) * combined_optimality + ϵk || tired)
       first_iteration = false
 
       ### System solution
